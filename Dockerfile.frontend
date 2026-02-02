@@ -1,0 +1,18 @@
+# Frontend Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY client/package.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy client code
+COPY client/public ./public
+COPY client/src ./src
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

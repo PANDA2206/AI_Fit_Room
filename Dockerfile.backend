@@ -1,0 +1,18 @@
+# Backend Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json ./
+
+# Install dependencies
+RUN npm install --production
+
+# Copy server code
+COPY server ./server
+COPY .env ./.env
+
+EXPOSE 5000
+
+CMD ["node", "server/index.js"]
