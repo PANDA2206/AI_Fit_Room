@@ -6,11 +6,12 @@ WORKDIR /app
 # Copy package files
 COPY package.json ./
 
-# Install dependencies
+# Install Node dependencies
 RUN npm install --production
 
 # Copy server code
 COPY server ./server
+COPY clothes ./clothes
 COPY .env ./.env
 
 EXPOSE 5001

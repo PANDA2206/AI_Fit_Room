@@ -1,16 +1,22 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    env_file:
+      - .env
     ports:
       - "5001:5001"
     environment:
       - NODE_ENV=development
       - PORT=5001
       - CLIENT_URL=http://localhost:3000
+      - WEAVIATE_HOST=http://weaviate:8080
+      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-local-dev-key}
+      - RAG_HOST=http://rag-service:8000
+      - RAG_TIMEOUT_MS=25000
+    depends_on:
+      - rag-service
     networks:
       - app-network
     restart: unless-stopped
@@ -23,6 +29,7 @@ services:
       - "3000:3000"
     environment:
       - REACT_APP_SOCKET_URL=http://localhost:5001
+      - REACT_APP_API_URL=http://localhost:5001
     depends_on:
       - backend
     networks:
@@ -31,6 +38,54 @@ services:
     stdin_open: true
     tty: true
 
+  rag-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.rag
+    env_file:
+      - .env
+    environment:
+      - WEAVIATE_HOST=http://weaviate:8080
+      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-local-dev-key}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HF_API_TOKEN=${HF_API_TOKEN:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - HF_MODEL=${HF_MODEL:-mistralai/Mistral-7B-Instruct-v0.2}
+      - HF_FALLBACK_MODEL=${HF_FALLBACK_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      - HF_CHAT_COMPLETIONS_URL=${HF_CHAT_COMPLETIONS_URL:-https://router.huggingface.co/v1/chat/completions}
+      - HF_WAIT_FOR_MODEL=${HF_WAIT_FOR_MODEL:-true}
+    depends_on:
+      - weaviate
+    networks:
+      - app-network
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  weaviate:
+    image: semitechnologies/weaviate:1.25.9
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    environment:
+      - QUERY_DEFAULTS_LIMIT=20
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=false
+      - AUTHENTICATION_APIKEY_ENABLED=true
+      - AUTHENTICATION_APIKEY_ALLOWED_KEYS=${WEAVIATE_API_KEY:-local-dev-key}
+      - AUTHENTICATION_APIKEY_USERS=default
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - ENABLE_MODULES=
+      - CLUSTER_HOSTNAME=node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - app-network
+    restart: unless-stopped
+
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  weaviate_data:

@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "node server/index.js",
     "server": "node server/index.js",
-    "docker:build": "docker-compose build",
-    "docker:up": "docker-compose up",
-    "docker:down": "docker-compose down"
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up",
+    "docker:down": "docker compose down"
   },
   "keywords": ["virtual-tryon", "camera", "real-time", "fashion"],
   "author": "",

@@ -1,0 +1,122 @@
+[
+  {
+    "name": "casual-tshirt-blue",
+    "url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "tshirt",
+    "color": "#3498DB",
+    "tags": [
+      "casual",
+      "summer",
+      "cotton"
+    ],
+    "image": "/clothes/casual-tshirt-blue.jpg",
+    "thumbnail": "/clothes/casual-tshirt-blue.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "formal-shirt-white",
+    "url": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "shirt",
+    "color": "#FFFFFF",
+    "tags": [
+      "formal",
+      "office",
+      "cotton"
+    ],
+    "image": "/clothes/formal-shirt-white.jpg",
+    "thumbnail": "/clothes/formal-shirt-white.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "hoodie-gray",
+    "url": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "hoodie",
+    "color": "#7F8C8D",
+    "tags": [
+      "casual",
+      "winter",
+      "comfortable"
+    ],
+    "image": "/clothes/hoodie-gray.jpg",
+    "thumbnail": "/clothes/hoodie-gray.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "sweater-cream",
+    "url": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "sweater",
+    "color": "#F5F5DC",
+    "tags": [
+      "casual",
+      "winter",
+      "cozy"
+    ],
+    "image": "/clothes/sweater-cream.jpg",
+    "thumbnail": "/clothes/sweater-cream.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "jacket-denim",
+    "url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "jacket",
+    "color": "#5DADE2",
+    "tags": [
+      "casual",
+      "denim",
+      "layering"
+    ],
+    "image": "/clothes/jacket-denim.jpg",
+    "thumbnail": "/clothes/jacket-denim.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "polo-navy",
+    "url": "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "polo",
+    "color": "#2C3E50",
+    "tags": [
+      "smart-casual",
+      "summer",
+      "classic"
+    ],
+    "image": "/clothes/polo-navy.jpg",
+    "thumbnail": "/clothes/polo-navy.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "blazer-black",
+    "url": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "blazer",
+    "color": "#1C1C1C",
+    "tags": [
+      "formal",
+      "office",
+      "elegant"
+    ],
+    "image": "/clothes/blazer-black.jpg",
+    "thumbnail": "/clothes/blazer-black.jpg",
+    "downloaded": true
+  },
+  {
+    "name": "cardigan-beige",
+    "url": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=400&h=500&fit=crop",
+    "category": "top",
+    "subcategory": "cardigan",
+    "color": "#D7CCC8",
+    "tags": [
+      "casual",
+      "layering",
+      "cozy"
+    ],
+    "image": "/clothes/cardigan-beige.jpg",
+    "thumbnail": "/clothes/cardigan-beige.jpg",
+    "downloaded": true
+  }
+]

@@ -6,7 +6,15 @@ README.md
 .DS_Store
 client/node_modules
 client/build
+__pycache__
+**/__pycache__
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+._*
+*/._*
+*/*/._*
+rag-service/._*
+client/._*
+**/._*
