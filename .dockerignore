@@ -4,6 +4,8 @@ npm-debug.log
 .gitignore
 README.md
 .DS_Store
+.env
+.env.prod
 client/node_modules
 client/build
 __pycache__

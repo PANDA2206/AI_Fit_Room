@@ -1,0 +1,66 @@
+name: Publish Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image namespace
+        id: vars
+        run: echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-backend:latest
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-backend:${{ github.sha }}
+
+      - name: Build and push rag-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.rag
+          push: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-rag-service:latest
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-rag-service:${{ github.sha }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend.prod
+          push: true
+          build-args: |
+            REACT_APP_API_URL=${{ vars.REACT_APP_API_URL }}
+            REACT_APP_SOCKET_URL=${{ vars.REACT_APP_SOCKET_URL }}
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-frontend:latest
+            ghcr.io/${{ steps.vars.outputs.owner_lc }}/ai-fit-room-frontend:${{ github.sha }}

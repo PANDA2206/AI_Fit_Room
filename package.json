@@ -8,7 +8,10 @@
     "server": "node server/index.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "docker:prod:pull": "docker compose -f docker-compose.prod.yml --env-file .env.prod pull",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --remove-orphans",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.prod down"
   },
   "keywords": ["virtual-tryon", "camera", "real-time", "fashion"],
   "author": "",

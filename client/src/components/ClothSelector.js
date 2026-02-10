@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { emitClothSelected } from '../services/socket';
 import './ClothSelector.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const API_URL = process.env.REACT_APP_API_URL
+  || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
 
 const AUDIENCE_OPTIONS = [
   { id: 'all', label: 'All' },

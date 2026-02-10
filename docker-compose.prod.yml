@@ -1,0 +1,85 @@
+services:
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "${PROXY_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx/reverse-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/panda2206/ai-fit-room-frontend:latest}
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/panda2206/ai-fit-room-backend:latest}
+    env_file:
+      - .env.prod
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      - CLIENT_URL=${PUBLIC_APP_URL}
+      - WEAVIATE_HOST=http://weaviate:8080
+      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
+      - RAG_HOST=http://rag-service:8000
+      - RAG_TIMEOUT_MS=${RAG_TIMEOUT_MS:-25000}
+    depends_on:
+      - rag-service
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  rag-service:
+    image: ${RAG_IMAGE:-ghcr.io/panda2206/ai-fit-room-rag-service:latest}
+    env_file:
+      - .env.prod
+    environment:
+      - WEAVIATE_HOST=http://weaviate:8080
+      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HF_API_TOKEN=${HF_API_TOKEN:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - HF_MODEL=${HF_MODEL:-mistralai/Mistral-7B-Instruct-v0.2}
+      - HF_FALLBACK_MODEL=${HF_FALLBACK_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      - HF_CHAT_COMPLETIONS_URL=${HF_CHAT_COMPLETIONS_URL:-https://router.huggingface.co/v1/chat/completions}
+      - HF_WAIT_FOR_MODEL=${HF_WAIT_FOR_MODEL:-true}
+    depends_on:
+      - weaviate
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  weaviate:
+    image: semitechnologies/weaviate:1.25.9
+    env_file:
+      - .env.prod
+    environment:
+      - QUERY_DEFAULTS_LIMIT=20
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=false
+      - AUTHENTICATION_APIKEY_ENABLED=true
+      - AUTHENTICATION_APIKEY_ALLOWED_KEYS=${WEAVIATE_API_KEY}
+      - AUTHENTICATION_APIKEY_USERS=default
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - ENABLE_MODULES=
+      - CLUSTER_HOSTNAME=node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  weaviate_data:
