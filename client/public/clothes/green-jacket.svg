@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 270">
+  <defs>
+    <linearGradient id="jacketGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#27AE60;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E8449;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Main body -->
+  <path d="M100 20 L55 38 L20 55 L0 95 L18 100 L35 80 L35 260 L165 260 L165 80 L182 100 L200 95 L180 55 L145 38 L100 20" 
+        fill="url(#jacketGrad)" stroke="#145A32" stroke-width="2"/>
+  <!-- Collar -->
+  <path d="M70 25 L55 70 L85 55 L90 30" fill="#1E8449" stroke="#145A32" stroke-width="1"/>
+  <path d="M130 25 L145 70 L115 55 L110 30" fill="#1E8449" stroke="#145A32" stroke-width="1"/>
+  <!-- Zipper -->
+  <line x1="100" y1="45" x2="100" y2="260" stroke="#FFD700" stroke-width="3"/>
+  <!-- Pockets -->
+  <rect x="45" y="150" width="40" height="45" rx="3" fill="#1E8449" stroke="#145A32" stroke-width="1"/>
+  <rect x="115" y="150" width="40" height="45" rx="3" fill="#1E8449" stroke="#145A32" stroke-width="1"/>
+</svg>

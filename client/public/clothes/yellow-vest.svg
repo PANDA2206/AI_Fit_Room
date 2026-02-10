@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220">
+  <defs>
+    <linearGradient id="vestGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F1C40F;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D4AC0D;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Main body (no sleeves) -->
+  <path d="M100 20 L65 35 L50 45 L50 210 L150 210 L150 45 L135 35 L100 20" 
+        fill="url(#vestGrad)" stroke="#9A7D0A" stroke-width="2"/>
+  <!-- V-neck -->
+  <path d="M75 25 L100 80 L125 25" fill="none" stroke="#9A7D0A" stroke-width="3"/>
+  <!-- Arm holes -->
+  <ellipse cx="50" cy="80" rx="8" ry="35" fill="none" stroke="#9A7D0A" stroke-width="2"/>
+  <ellipse cx="150" cy="80" rx="8" ry="35" fill="none" stroke="#9A7D0A" stroke-width="2"/>
+  <!-- Buttons -->
+  <circle cx="100" cy="100" r="5" fill="#9A7D0A"/>
+  <circle cx="100" cy="130" r="5" fill="#9A7D0A"/>
+  <circle cx="100" cy="160" r="5" fill="#9A7D0A"/>
+</svg>

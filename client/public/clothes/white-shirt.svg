@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 260">
+  <defs>
+    <linearGradient id="shirtGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E8E8E8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Main body -->
+  <path d="M100 25 L60 40 L30 55 L10 90 L28 95 L42 78 L42 250 L158 250 L158 78 L172 95 L190 90 L170 55 L140 40 L100 25" 
+        fill="url(#shirtGrad)" stroke="#CCC" stroke-width="2"/>
+  <!-- Collar left -->
+  <path d="M75 30 L60 60 L80 50 L85 35" fill="#FFF" stroke="#CCC" stroke-width="1"/>
+  <!-- Collar right -->
+  <path d="M125 30 L140 60 L120 50 L115 35" fill="#FFF" stroke="#CCC" stroke-width="1"/>
+  <!-- Buttons -->
+  <circle cx="100" cy="80" r="4" fill="#888"/>
+  <circle cx="100" cy="110" r="4" fill="#888"/>
+  <circle cx="100" cy="140" r="4" fill="#888"/>
+  <circle cx="100" cy="170" r="4" fill="#888"/>
+  <circle cx="100" cy="200" r="4" fill="#888"/>
+  <!-- Button line -->
+  <line x1="100" y1="50" x2="100" y2="250" stroke="#DDD" stroke-width="1"/>
+</svg>

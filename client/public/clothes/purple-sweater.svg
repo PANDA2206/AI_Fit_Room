@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 260">
+  <defs>
+    <linearGradient id="sweaterGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#9B59B6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6C3483;stop-opacity:1" />
+    </linearGradient>
+    <pattern id="knit" patternUnits="userSpaceOnUse" width="10" height="10">
+      <path d="M0 5 Q2.5 0 5 5 T10 5" fill="none" stroke="#7D3C98" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <!-- Main body -->
+  <path d="M100 25 L58 42 L25 58 L5 95 L22 100 L38 82 L38 250 L162 250 L162 82 L178 100 L195 95 L175 58 L142 42 L100 25" 
+        fill="url(#sweaterGrad)" stroke="#4A235A" stroke-width="2"/>
+  <!-- Knit texture overlay -->
+  <path d="M100 25 L58 42 L25 58 L5 95 L22 100 L38 82 L38 250 L162 250 L162 82 L178 100 L195 95 L175 58 L142 42 L100 25" 
+        fill="url(#knit)" opacity="0.3"/>
+  <!-- V-neck -->
+  <path d="M75 30 L100 70 L125 30" fill="none" stroke="#4A235A" stroke-width="3"/>
+  <!-- Ribbed bottom -->
+  <rect x="38" y="235" width="124" height="15" fill="#6C3483"/>
+  <!-- Ribbed cuffs indication -->
+  <rect x="5" y="88" width="20" height="12" fill="#6C3483" rx="2"/>
+  <rect x="175" y="88" width="20" height="12" fill="#6C3483" rx="2"/>
+</svg>
