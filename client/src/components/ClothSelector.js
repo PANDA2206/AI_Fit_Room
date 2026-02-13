@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { emitClothSelected } from '../services/socket';
 import './ClothSelector.css';
 
 const API_URL = process.env.REACT_APP_API_URL
   || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+const PRODUCT_SOURCE = process.env.REACT_APP_PRODUCT_SOURCE || 'fashion-product-images-kaggle';
 
 const AUDIENCE_OPTIONS = [
   { id: 'all', label: 'All' },
@@ -15,11 +16,95 @@ const AUDIENCE_OPTIONS = [
 const ClothSelector = ({ onSelect, selectedCloth }) => {
   const [clothes, setClothes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [categories, setCategories] = useState([]);
+  const [categoryField, setCategoryField] = useState('subcategory');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedAudience, setSelectedAudience] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const searchTimeoutRef = useRef(null);
+
+  const normalizeCloth = useCallback((cloth = {}) => {
+    const id = String(cloth.id || cloth.publicId || cloth.dbId || cloth.sourceId || cloth.externalId || '').trim();
+    const title = String(cloth.title || cloth.name || '').trim();
+    const imageUrl = String(cloth.imageUrl || cloth.image_url || cloth.image || '').trim();
+    const thumbnailUrl = String(cloth.thumbnailUrl || cloth.thumbnail_url || cloth.thumbnail || imageUrl).trim();
+    const subcategory = cloth.subcategory || cloth.category || 'other';
+    const articleType = cloth.articleType || cloth.article_type || null;
+
+    return {
+      ...cloth,
+      id,
+      title,
+      name: title,
+      image: imageUrl,
+      thumbnail: thumbnailUrl,
+      sourceId: cloth.sourceId || cloth.source_id || cloth.externalId || cloth.external_id || null,
+      source: cloth.source || PRODUCT_SOURCE,
+      subcategory,
+      articleType
+    };
+  }, []);
+
+  const fetchClothes = useCallback(async (category = null, search = null) => {
+    try {
+      setLoading(true);
+      setLoadError('');
+      let url = `${API_URL}/api/clothes?limit=50&source=${encodeURIComponent(PRODUCT_SOURCE)}&scope=tryon`;
+      
+      if (category && category !== 'all') {
+        url += `&${categoryField}=${encodeURIComponent(category)}`;
+      }
+      if (search) {
+        url += `&search=${encodeURIComponent(search)}`;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load catalog (${response.status})`);
+      }
+      const result = await response.json();
+      
+      const clothesData = result.data || result;
+      const normalized = Array.isArray(clothesData)
+        ? clothesData
+          .map((cloth) => normalizeCloth(cloth))
+          .filter((cloth) => cloth.id && cloth.image)
+        : [];
+
+      setClothes(normalized);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching clothes:', error);
+      setLoadError('Unable to load fashion catalog right now.');
+      setClothes([]);
+      setLoading(false);
+    }
+  }, [categoryField, normalizeCloth]);
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/clothes/meta/categories?source=${encodeURIComponent(PRODUCT_SOURCE)}&scope=tryon`);
+      if (!response.ok) {
+        throw new Error(`Failed to load categories (${response.status})`);
+      }
+      const data = await response.json();
+      const articleTypes = Array.isArray(data.articleTypes) ? data.articleTypes.filter(Boolean) : [];
+      const subcategories = Array.isArray(data.subcategories) ? data.subcategories.filter(Boolean) : [];
+
+      if (articleTypes.length > 0) {
+        setCategoryField('articleType');
+        setCategories(articleTypes);
+        return;
+      }
+
+      setCategoryField('subcategory');
+      setCategories(subcategories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      setCategories([]);
+    }
+  }, []);
 
   useEffect(() => {
     fetchClothes();
@@ -29,53 +114,7 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, []);
-
-  const fetchClothes = async (category = null, search = null) => {
-    try {
-      setLoading(true);
-      let url = `${API_URL}/api/clothes?limit=50`;
-      
-      if (category && category !== 'all') {
-        url += `&subcategory=${category}`;
-      }
-      if (search) {
-        url += `&search=${encodeURIComponent(search)}`;
-      }
-
-      const response = await fetch(url);
-      const result = await response.json();
-      
-      // Handle paginated response
-      const clothesData = result.data || result;
-      setClothes(clothesData);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching clothes:', error);
-      // Fallback to local SVG clothes
-      const fallbackClothes = [
-        { id: 1, name: 'Blue T-Shirt', category: 'top', subcategory: 'tshirt', color: '#4A90D9', image: '/clothes/blue-tshirt.svg' },
-        { id: 2, name: 'Red Hoodie', category: 'top', subcategory: 'hoodie', color: '#E74C3C', image: '/clothes/red-hoodie.svg' },
-        { id: 3, name: 'White Shirt', category: 'top', subcategory: 'shirt', color: '#FFFFFF', image: '/clothes/white-shirt.svg' },
-        { id: 4, name: 'Green Jacket', category: 'top', subcategory: 'jacket', color: '#27AE60', image: '/clothes/green-jacket.svg' },
-        { id: 5, name: 'Purple Sweater', category: 'top', subcategory: 'sweater', color: '#9B59B6', image: '/clothes/purple-sweater.svg' },
-        { id: 6, name: 'Yellow Vest', category: 'top', subcategory: 'vest', color: '#F1C40F', image: '/clothes/yellow-vest.svg' }
-      ];
-      setClothes(fallbackClothes);
-      setLoading(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/clothes/meta/categories`);
-      const data = await response.json();
-      setCategories(data.subcategories || []);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      setCategories(['tshirt', 'hoodie', 'shirt', 'jacket', 'sweater', 'vest']);
-    }
-  };
+  }, [fetchCategories, fetchClothes]);
 
   const handleCategoryChange = (category) => {
     setSelectedCategory(category);
@@ -98,16 +137,16 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
     emitClothSelected(cloth.id);
   };
 
-  const normalizeGender = (value = '') => {
+  const normalizeGender = useCallback((value = '') => {
     const text = String(value).toLowerCase().trim();
     if (!text) return '';
     if (text === 'man' || text === 'male' || text === 'mens' || text === 'men') return 'men';
     if (text === 'woman' || text === 'female' || text === 'womens' || text === 'women') return 'women';
     if (text.includes('unisex')) return 'unisex';
     return text;
-  };
+  }, []);
 
-  const inferAudience = (cloth) => {
+  const inferAudience = useCallback((cloth) => {
     const direct = normalizeGender(cloth.gender);
     if (direct === 'men' || direct === 'women' || direct === 'unisex') {
       return direct;
@@ -144,7 +183,7 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
     }
 
     return 'unisex';
-  };
+  }, [normalizeGender]);
 
   const filteredClothes = useMemo(() => {
     if (selectedAudience === 'all') {
@@ -152,7 +191,7 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
     }
 
     return clothes.filter((cloth) => inferAudience(cloth) === selectedAudience);
-  }, [clothes, selectedAudience]);
+  }, [clothes, inferAudience, selectedAudience]);
 
   const formatCategoryLabel = (label = '') => {
     if (!label) return 'Category';
@@ -235,14 +274,25 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
                 style={{ backgroundColor: cloth.color || '#e9e5dd' }}
               >
                 {cloth.image ? (
-                  <img src={cloth.image} alt={cloth.name} />
+                  <img
+                    src={cloth.thumbnail || cloth.image}
+                    alt={cloth.name}
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none';
+                    }}
+                  />
                 ) : (
                   <div className="cloth-icon">Preview</div>
                 )}
               </div>
               <div className="cloth-info">
                 <h3>{cloth.name}</h3>
-                <p className="cloth-category">{formatCategoryLabel(cloth.subcategory || cloth.category)}</p>
+                <p className="cloth-category">{formatCategoryLabel(
+                  categoryField === 'articleType'
+                    ? cloth.articleType || cloth.subcategory || cloth.category
+                    : cloth.subcategory || cloth.category || cloth.articleType
+                )}</p>
                 <div className="cloth-meta-row">
                   <span className="cloth-brand">
                     {cloth.brand && cloth.brand !== 'Sample' && cloth.brand !== 'Unknown'
@@ -259,7 +309,7 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
 
       {filteredClothes.length === 0 && !loading && (
         <div className="no-results">
-          No styles found for this section. Try another filter.
+          {loadError || 'No styles found for this section. Try another filter.'}
         </div>
       )}
     </div>

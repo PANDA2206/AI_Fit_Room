@@ -9,14 +9,45 @@ services:
       - "5001:5001"
     environment:
       - NODE_ENV=development
+      - NODE_OPTIONS=--dns-result-order=ipv4first
       - PORT=5001
       - CLIENT_URL=http://localhost:3000
+      - DB_ENABLED=true
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-app_user}
+      - DB_PASSWORD=${DB_PASSWORD:-app_password}
+      - DB_NAME=${DB_NAME:-virtual_tryon}
+      - DB_SSL=${DB_SSL:-false}
+      - DB_SEED_DEFAULT_PRODUCTS=${DB_SEED_DEFAULT_PRODUCTS:-false}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-12h}
+      - PASSWORD_SALT_ROUNDS=${PASSWORD_SALT_ROUNDS:-10}
       - WEAVIATE_HOST=http://weaviate:8080
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-local-dev-key}
       - RAG_HOST=http://rag-service:8000
       - RAG_TIMEOUT_MS=25000
+      - AILAB_API_KEY=${AILAB_API_KEY:-}
+      - AILAB_API_BASE=${AILAB_API_BASE:-https://www.ailabapi.com}
+      - AILAB_TIMEOUT_MS=${AILAB_TIMEOUT_MS:-60000}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY:-}
+      - SUPABASE_STORAGE_BUCKET=${SUPABASE_STORAGE_BUCKET:-fashion-products}
+      - SUPABASE_S3_ENDPOINT=${SUPABASE_S3_ENDPOINT:-}
+      - SUPABASE_S3_REGION=${SUPABASE_S3_REGION:-us-east-1}
+      - SUPABASE_S3_ACCESS_KEY_ID=${SUPABASE_S3_ACCESS_KEY_ID:-}
+      - SUPABASE_S3_SECRET_ACCESS_KEY=${SUPABASE_S3_SECRET_ACCESS_KEY:-}
+      - SUPABASE_S3_FORCE_PATH_STYLE=${SUPABASE_S3_FORCE_PATH_STYLE:-true}
+      - FASHION_SOURCE=${FASHION_SOURCE:-fashion-product-images-kaggle}
+      - FASHION_DATASET_NAME=${FASHION_DATASET_NAME:-Fashion Product Images Dataset}
     depends_on:
-      - rag-service
+      rag-service:
+        condition: service_started
+    volumes:
+      # Local Kaggle dataset is stored in ./data; mount it so the importer can read it inside the container.
+      - ./data:/app/data
     networks:
       - app-network
     restart: unless-stopped
@@ -30,6 +61,9 @@ services:
     environment:
       - REACT_APP_SOCKET_URL=http://localhost:5001
       - REACT_APP_API_URL=http://localhost:5001
+      - REACT_APP_PRODUCT_SOURCE=${REACT_APP_PRODUCT_SOURCE:-fashion-product-images-kaggle}
+      - REACT_APP_SUPABASE_URL=${SUPABASE_URL:-}
+      - REACT_APP_SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY:-}
     depends_on:
       - backend
     networks:
@@ -83,9 +117,29 @@ services:
       - app-network
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER:-app_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-app_password}
+      - POSTGRES_DB=${DB_NAME:-virtual_tryon}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app_user} -d ${DB_NAME:-virtual_tryon}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
 networks:
   app-network:
     driver: bridge
 
 volumes:
   weaviate_data:
+  postgres_data:

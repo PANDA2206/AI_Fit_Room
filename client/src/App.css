@@ -23,20 +23,23 @@
 
 .App {
   min-height: 100vh;
+  height: 100vh;
   background:
     radial-gradient(circle at 20% 10%, rgba(214, 206, 193, 0.32), transparent 38%),
     radial-gradient(circle at 82% 90%, rgba(206, 198, 184, 0.24), transparent 35%),
     var(--bg-shell);
   color: var(--text-primary);
-  padding: 20px;
+  padding: 12px;
   font-family: 'Public Sans', 'Gill Sans', 'Trebuchet MS', sans-serif;
+  display: flex;
+  flex-direction: column;
 }
 
 .App-header {
-  padding: 18px 22px;
-  margin-bottom: 16px;
+  padding: 10px 16px;
+  margin-bottom: 10px;
   border: 1px solid var(--border-soft);
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(4px);
   display: flex;
@@ -45,14 +48,42 @@
   box-shadow: var(--shadow-soft);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  background: var(--bg-muted);
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+
+.view-toggle button {
+  border: none;
+  background: transparent;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.view-toggle button.active {
+  background: #2f2c28;
+  color: #fdfcf9;
+}
+
 .header-brand {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .header-eyebrow {
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -60,7 +91,7 @@
 
 .App-header h1 {
   font-family: 'Cormorant Garamond', Georgia, serif;
-  font-size: clamp(2rem, 2.6vw, 2.6rem);
+  font-size: clamp(1.8rem, 2.2vw, 2.25rem);
   letter-spacing: 0.04em;
   font-weight: 600;
   line-height: 1;
@@ -71,9 +102,9 @@
   align-items: center;
   gap: 8px;
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--border-strong);
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -81,8 +112,8 @@
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   display: inline-block;
   background: var(--text-muted);
@@ -110,8 +141,8 @@
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(280px, 360px);
   gap: 1px;
-  height: calc(100vh - 118px);
-  min-height: calc(100vh - 118px);
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--border-soft);
   border-radius: 22px;
   overflow: hidden;
@@ -132,6 +163,7 @@
 @media (max-width: 960px) {
   .App {
     padding: 14px;
+    height: auto;
   }
 
   .app-container {
