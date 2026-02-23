@@ -150,11 +150,23 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
       return catalogCacheRef.current;
     }
 
-    const response = await fetch(`${API_URL}/clothes/metadata.json`, { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error(`Failed to load catalog metadata (${response.status})`);
+    try {
+      const response = await fetch(`${API_URL}/api/catalog?limit=200`, { cache: 'no-store' });
+      if (response.ok) {
+        const payload = await response.json();
+        const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
+        catalogCacheRef.current = items;
+        return catalogCacheRef.current;
+      }
+    } catch (_error) {
+      // ignore and fall back to local metadata.
     }
-    const data = await response.json();
+
+    const fallbackResponse = await fetch(`${API_URL}/clothes/metadata.json`, { cache: 'no-store' });
+    if (!fallbackResponse.ok) {
+      throw new Error(`Failed to load catalog metadata (${fallbackResponse.status})`);
+    }
+    const data = await fallbackResponse.json();
     catalogCacheRef.current = Array.isArray(data) ? data : [];
     return catalogCacheRef.current;
   }, []);

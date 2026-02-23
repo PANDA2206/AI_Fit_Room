@@ -6,6 +6,7 @@ const path = require('path');
 require('dotenv').config();
 
 const clothesRoutes = require('./routes/clothes');
+const catalogRoutes = require('./routes/catalog');
 const ragRoutes = require('./routes/rag');
 const chatRoutes = require('./routes/chat');
 const aiLabTryOnRoutes = require('./routes/aiLabTryOn');
@@ -53,6 +54,7 @@ app.get('/api/health', (req, res) => {
 
 // Clothes API routes
 app.use('/api/clothes', clothesRoutes);
+app.use('/api/catalog', catalogRoutes);
 app.use('/api/rag', ragRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/tryon/ailab', aiLabTryOnRoutes);
