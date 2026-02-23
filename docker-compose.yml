@@ -21,6 +21,7 @@ services:
       - DB_NAME=${DB_NAME:-virtual_tryon}
       - DB_SSL=${DB_SSL:-false}
       - DB_SEED_DEFAULT_PRODUCTS=${DB_SEED_DEFAULT_PRODUCTS:-false}
+      - ENABLE_SEGMENTATION=${ENABLE_SEGMENTATION:-true}
       - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-12h}
       - PASSWORD_SALT_ROUNDS=${PASSWORD_SALT_ROUNDS:-10}
@@ -40,6 +41,8 @@ services:
       - SUPABASE_S3_ACCESS_KEY_ID=${SUPABASE_S3_ACCESS_KEY_ID:-}
       - SUPABASE_S3_SECRET_ACCESS_KEY=${SUPABASE_S3_SECRET_ACCESS_KEY:-}
       - SUPABASE_S3_FORCE_PATH_STYLE=${SUPABASE_S3_FORCE_PATH_STYLE:-true}
+      - TRYON_PRODUCT_SOURCE=${TRYON_PRODUCT_SOURCE:-dresscode-rembg}
+      - TRYON_MASTER_CATEGORIES=${TRYON_MASTER_CATEGORIES:-dresscode,apparel}
       - FASHION_SOURCE=${FASHION_SOURCE:-fashion-product-images-kaggle}
       - FASHION_DATASET_NAME=${FASHION_DATASET_NAME:-Fashion Product Images Dataset}
     depends_on:
@@ -61,7 +64,8 @@ services:
     environment:
       - REACT_APP_SOCKET_URL=http://localhost:5001
       - REACT_APP_API_URL=http://localhost:5001
-      - REACT_APP_PRODUCT_SOURCE=${REACT_APP_PRODUCT_SOURCE:-fashion-product-images-kaggle}
+      - REACT_APP_SEGMENTATION_URL=http://rag-service:8000
+      - REACT_APP_PRODUCT_SOURCE=${REACT_APP_PRODUCT_SOURCE:-catalog}
       - REACT_APP_SUPABASE_URL=${SUPABASE_URL:-}
       - REACT_APP_SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY:-}
     depends_on:
