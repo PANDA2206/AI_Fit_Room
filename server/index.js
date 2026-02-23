@@ -41,6 +41,11 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/clothes', express.static(path.join(__dirname, '../clothes')));
 
+// Friendly root message so cloud deployments show a live indicator instead of 404
+app.get('/', (req, res) => {
+  res.send('AI Fit Room backend is live. See /api/health for status.');
+});
+
 // Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
@@ -55,6 +60,17 @@ app.use('/api/size-estimation', sizeEstimationRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/auth', usersRoutes);
 app.use('/api/cart', cartRoutes);
+
+// Optional segmentation routes (tfjs-node is heavy and not installed by default).
+if (String(process.env.ENABLE_SEGMENTATION || 'false').toLowerCase() === 'true') {
+  try {
+    // eslint-disable-next-line global-require
+    const segmentRoutes = require('./routes/segment');
+    app.use('/api/segment', segmentRoutes);
+  } catch (error) {
+    console.warn('[segment] routes disabled:', error.message || error);
+  }
+}
 
 // Socket.IO for real-time communication
 io.on('connection', (socket) => {
