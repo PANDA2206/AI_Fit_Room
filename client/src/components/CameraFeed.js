@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import './CameraFeed.css';
 
 import * as cartService from '../services/cart';
@@ -723,7 +723,7 @@ const CameraFeed = ({ selectedCloth }) => {
         cancelAnimationFrame(animationId);
       }
     };
-  }, [applyClothOverlay]);
+  }, [applyClothOverlay, drawSkeleton]);
 
   const announce = (message) => {
     setActionMessage(message);

@@ -41,10 +41,12 @@ export const emitClothSelected = (clothId) => {
   }
 };
 
-export default {
+const socketService = {
   connectSocket,
   disconnectSocket,
   getSocket,
   emitVideoFrame,
   emitClothSelected
 };
+
+export default socketService;

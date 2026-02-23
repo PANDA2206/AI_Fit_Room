@@ -66,10 +66,12 @@ export const clearCart = () => request('/api/cart/clear', {
   method: 'POST'
 });
 
-export default {
+const cartService = {
   getCart,
   addItem,
   updateItem,
   removeItem,
   clearCart
 };
+
+export default cartService;
