@@ -3,7 +3,15 @@
   command = "npm run build"
   publish = "build"
 
-[context.staging.environment]
+[context.production.environment]
+  REACT_APP_API_URL = "https://ai-fit-room.onrender.com"
+  REACT_APP_SOCKET_URL = "https://ai-fit-room.onrender.com"
+
+[context.branch-deploy.environment]
+  REACT_APP_API_URL = "https://ai-fit-room-1.onrender.com"
+  REACT_APP_SOCKET_URL = "https://ai-fit-room-1.onrender.com"
+
+[context.deploy-preview.environment]
   REACT_APP_API_URL = "https://ai-fit-room-1.onrender.com"
   REACT_APP_SOCKET_URL = "https://ai-fit-room-1.onrender.com"
 
