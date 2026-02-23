@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './CustomerQueryChat.css';
 
-const API_URL = process.env.REACT_APP_API_URL
-  || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+const DEFAULT_API_URL = process.env.NODE_ENV === 'production'
+  ? 'https://ai-fit-room.onrender.com'
+  : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+
+const API_URL = process.env.REACT_APP_API_URL || DEFAULT_API_URL;
 
 const STARTER_QUESTIONS = [
   'What are the EU sustainability disclosure rules for fashion products?',

@@ -10,8 +10,35 @@ const KEYPOINTS = {
   RIGHT_HIP: 24,
   LEFT_ELBOW: 13,
   RIGHT_ELBOW: 14,
+  LEFT_KNEE: 25,
+  RIGHT_KNEE: 26,
   LEFT_ANKLE: 27,
   RIGHT_ANKLE: 28
+};
+
+const TOP_KEYWORDS = ['top', 'tee', 'tshirt', 'shirt', 'sweater', 'hoodie', 'jacket', 'coat', 'blazer', 'cardigan'];
+const PANTS_KEYWORDS = ['pant', 'pants', 'trouser', 'trousers', 'jean', 'denim', 'legging', 'jogger', 'joggers', 'chino'];
+const SHORTS_KEYWORDS = ['short', 'shorts'];
+const SKIRT_KEYWORDS = ['skirt', 'skort'];
+const DRESS_KEYWORDS = ['dress', 'gown', 'jumpsuit', 'romper'];
+
+const classifyGarment = (cloth = {}) => {
+  const tokens = [
+    cloth.articleType,
+    cloth.article_type,
+    cloth.subcategory,
+    cloth.category,
+    cloth.name,
+    cloth.title,
+    ...(Array.isArray(cloth.tags) ? cloth.tags : [])
+  ].join(' ').toLowerCase();
+
+  if (DRESS_KEYWORDS.some((kw) => tokens.includes(kw))) return 'dress';
+  if (SKIRT_KEYWORDS.some((kw) => tokens.includes(kw))) return 'skirt';
+  if (SHORTS_KEYWORDS.some((kw) => tokens.includes(kw))) return 'shorts';
+  if (PANTS_KEYWORDS.some((kw) => tokens.includes(kw))) return 'pants';
+  if (TOP_KEYWORDS.some((kw) => tokens.includes(kw))) return 'top';
+  return 'top';
 };
 
 const adjustColor = (color, amount) => {
@@ -22,8 +49,31 @@ const adjustColor = (color, amount) => {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 };
 
-const API_URL = process.env.REACT_APP_API_URL
-  || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+const MIN_CONFIDENCE = 0.4;
+
+const drawFitOverlay = (ctx, box, fitRatio) => {
+  if (!box) return;
+  let color = null;
+  if (fitRatio < 0.9) {
+    color = 'rgba(255, 99, 71, 0.25)'; // too tight
+  } else if (fitRatio > 1.25) {
+    color = 'rgba(80, 160, 255, 0.2)'; // too loose
+  }
+  if (!color) return;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.restore();
+};
+
+const DEFAULT_API_URL = process.env.NODE_ENV === 'production'
+  ? 'https://ai-fit-room.onrender.com'
+  : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+
+const API_URL = process.env.REACT_APP_API_URL || DEFAULT_API_URL;
+const SEGMENTATION_URL = process.env.REACT_APP_SEGMENTATION_URL
+  || process.env.REACT_APP_RAG_URL
+  || 'http://localhost:8000';
 
 const CameraFeed = ({ selectedCloth }) => {
   const videoRef = useRef(null);
@@ -43,6 +93,7 @@ const CameraFeed = ({ selectedCloth }) => {
   const [sizeEstimate, setSizeEstimate] = useState(null);
   const [sizeError, setSizeError] = useState('');
   const [isEstimating, setIsEstimating] = useState(false);
+  const [cutoutUnavailable, setCutoutUnavailable] = useState(false);
   const poseDetectorRef = useRef(null);
   const imagePoseDetectorRef = useRef(null);
   const isDetectingRef = useRef(false);
@@ -69,23 +120,74 @@ const CameraFeed = ({ selectedCloth }) => {
     const loadImage = async () => {
       if (clothImages[selectedCloth.id]) return;
 
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = selectedCloth.image;
+      // If the product image is already a cutout, use it directly instead of calling segmentation.
+      const isPreCutout = /processed\/apparel\/cutouts|_cutout\.png/i.test(selectedCloth.image || '');
 
-      await new Promise((resolve) => {
+      const fetchCutout = async () => {
+        if (isPreCutout) return selectedCloth.image;
+
+        try {
+          const response = await fetch(`${SEGMENTATION_URL}/segment/cloth-only`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: selectedCloth.image })
+          });
+
+          if (!response.ok) return null;
+          const data = await response.json();
+          if (data?.cutout) return data.cutout;
+          return null;
+        } catch (err) {
+          console.warn('Cutout fetch failed', err);
+          return null;
+        }
+      };
+
+      const tryLoad = (src, crossOriginValue) => new Promise((resolve) => {
+        const img = new Image();
+        if (crossOriginValue !== undefined) {
+          img.crossOrigin = crossOriginValue;
+          img.referrerPolicy = 'no-referrer';
+        }
         img.onload = () => {
           setClothImages((prev) => ({
             ...prev,
             [selectedCloth.id]: img
           }));
-          resolve();
+          resolve(true);
         };
-        img.onerror = () => {
-          console.warn(`Failed to load cloth image: ${selectedCloth.image}`);
-          resolve();
-        };
+        img.onerror = () => resolve(false);
+        img.src = src;
       });
+
+      const cutoutUrl = await fetchCutout();
+      const hasCutout = Boolean(cutoutUrl);
+      setCutoutUnavailable(!hasCutout);
+
+      // If no cutout is available, skip overlaying to avoid showing background/person.
+      if (!hasCutout) return;
+
+      const candidateSrc = cutoutUrl;
+
+      // First try with CORS; if the bucket lacks CORS, retry without it (canvas will be tainted but we only draw).
+      const loadedWithCors = await tryLoad(candidateSrc, 'anonymous');
+      let loadedImage = loadedWithCors;
+      if (!loadedWithCors) {
+        loadedImage = await tryLoad(candidateSrc, undefined);
+      }
+
+      // If cutout failed to load, fall back to the original image so the user still sees something.
+      if (!loadedImage) {
+        const originalLoadedWithCors = await tryLoad(selectedCloth.image, 'anonymous');
+        let originalLoaded = originalLoadedWithCors;
+        if (!originalLoadedWithCors) {
+          originalLoaded = await tryLoad(selectedCloth.image, undefined);
+        }
+        setCutoutUnavailable(true);
+        if (!originalLoaded) {
+          console.warn(`Failed to load cloth image or fallback: ${candidateSrc}`);
+        }
+      }
     };
 
     loadImage();
@@ -336,11 +438,62 @@ const CameraFeed = ({ selectedCloth }) => {
     );
   }, [computeMetricsFromSnapshot]);
 
+  const drawSkeleton = useCallback((ctx, landmarks, frame, canvasSize) => {
+    if (!landmarks || !frame || !canvasSize?.width || !canvasSize?.height) return;
+
+    const mapPoint = (index) => mapLandmarkToCanvas(landmarks[index], frame, canvasSize);
+    const pairs = [
+      [KEYPOINTS.LEFT_SHOULDER, KEYPOINTS.RIGHT_SHOULDER],
+      [KEYPOINTS.LEFT_SHOULDER, KEYPOINTS.LEFT_HIP],
+      [KEYPOINTS.RIGHT_SHOULDER, KEYPOINTS.RIGHT_HIP],
+      [KEYPOINTS.LEFT_HIP, KEYPOINTS.RIGHT_HIP],
+      [KEYPOINTS.LEFT_HIP, KEYPOINTS.LEFT_KNEE],
+      [KEYPOINTS.RIGHT_HIP, KEYPOINTS.RIGHT_KNEE],
+      [KEYPOINTS.LEFT_KNEE, KEYPOINTS.LEFT_ANKLE],
+      [KEYPOINTS.RIGHT_KNEE, KEYPOINTS.RIGHT_ANKLE]
+    ];
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+
+    pairs.forEach(([a, b]) => {
+      const p1 = mapPoint(a);
+      const p2 = mapPoint(b);
+      if (!p1 || !p2) return;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    });
+
+    const jointIndices = [
+      KEYPOINTS.LEFT_SHOULDER, KEYPOINTS.RIGHT_SHOULDER,
+      KEYPOINTS.LEFT_HIP, KEYPOINTS.RIGHT_HIP,
+      KEYPOINTS.LEFT_KNEE, KEYPOINTS.RIGHT_KNEE,
+      KEYPOINTS.LEFT_ANKLE, KEYPOINTS.RIGHT_ANKLE
+    ];
+
+    ctx.fillStyle = 'rgba(0, 200, 255, 0.9)';
+    jointIndices.forEach((idx) => {
+      const p = mapPoint(idx);
+      if (!p) return;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.restore();
+  }, [mapLandmarkToCanvas]);
+
   const applyClothOverlay = useCallback((ctx, cloth, landmarks, width, height, frame) => {
     if (!cloth || !landmarks || landmarks.length === 0) return;
     if (!frame || !frame.sWidth || !frame.sHeight) return;
 
     const clothImg = clothImages[cloth.id];
+    const garmentType = classifyGarment(cloth);
+    const baseColor = cloth.color || '#cfcfcf';
 
     const mapToFrame = (point) => {
       const sourceX = point.x * frame.sourceWidth;
@@ -355,6 +508,10 @@ const CameraFeed = ({ selectedCloth }) => {
     const rightShoulderRaw = landmarks[KEYPOINTS.RIGHT_SHOULDER];
     const leftHipRaw = landmarks[KEYPOINTS.LEFT_HIP];
     const rightHipRaw = landmarks[KEYPOINTS.RIGHT_HIP];
+    const leftKneeRaw = landmarks[KEYPOINTS.LEFT_KNEE];
+    const rightKneeRaw = landmarks[KEYPOINTS.RIGHT_KNEE];
+    const leftAnkleRaw = landmarks[KEYPOINTS.LEFT_ANKLE];
+    const rightAnkleRaw = landmarks[KEYPOINTS.RIGHT_ANKLE];
 
     if (!leftShoulderRaw || !rightShoulderRaw || !leftHipRaw || !rightHipRaw) return;
 
@@ -362,6 +519,10 @@ const CameraFeed = ({ selectedCloth }) => {
     const rightShoulder = mapToFrame(rightShoulderRaw);
     const leftHip = mapToFrame(leftHipRaw);
     const rightHip = mapToFrame(rightHipRaw);
+    const leftKnee = leftKneeRaw ? mapToFrame(leftKneeRaw) : null;
+    const rightKnee = rightKneeRaw ? mapToFrame(rightKneeRaw) : null;
+    const leftAnkle = leftAnkleRaw ? mapToFrame(leftAnkleRaw) : null;
+    const rightAnkle = rightAnkleRaw ? mapToFrame(rightAnkleRaw) : null;
 
     const shoulderLeftX = leftShoulder.x;
     const shoulderRightX = rightShoulder.x;
@@ -371,54 +532,115 @@ const CameraFeed = ({ selectedCloth }) => {
     const mirroredLeftX = width - shoulderLeftX;
     const mirroredRightX = width - shoulderRightX;
 
+    const hipLeftX = width - leftHip.x;
+    const hipRightX = width - rightHip.x;
+
     const shoulderWidth = Math.abs(mirroredLeftX - mirroredRightX);
+    const hipWidth = Math.abs(hipLeftX - hipRightX);
     const torsoHeight = Math.abs(hipY - shoulderY);
 
-    const clothWidth = shoulderWidth * 1.6;
-    const clothHeight = torsoHeight * 1.3;
-    const clothX = Math.min(mirroredLeftX, mirroredRightX) - (clothWidth - shoulderWidth) / 2;
-    const clothY = shoulderY - clothHeight * 0.1;
+    const ankleY = leftAnkle && rightAnkle ? (leftAnkle.y + rightAnkle.y) / 2 : null;
+    const kneeY = leftKnee && rightKnee ? (leftKnee.y + rightKnee.y) / 2 : null;
+    const legHeight = ankleY ? Math.max(ankleY - hipY, torsoHeight * 0.9) : torsoHeight * 1.4;
+    const thighHeight = kneeY ? Math.max(kneeY - hipY, torsoHeight * 0.5) : torsoHeight * 0.7;
 
-    if (clothImg && clothImg.complete && clothImg.naturalWidth > 0) {
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(clothImg, clothX, clothY, clothWidth, clothHeight);
-      ctx.globalAlpha = 1.0;
-    } else {
+    const drawImageOrGradient = (x, y, w, h, shape = 'top') => {
+      if (clothImg && clothImg.complete && clothImg.naturalWidth > 0) {
+        ctx.globalAlpha = 0.88;
+        ctx.drawImage(clothImg, x, y, w, h);
+        ctx.globalAlpha = 1.0;
+        return;
+      }
+
       ctx.save();
-      ctx.globalAlpha = 0.7;
-
-      const gradient = ctx.createLinearGradient(clothX, clothY, clothX, clothY + clothHeight);
-      gradient.addColorStop(0, cloth.color);
-      gradient.addColorStop(1, adjustColor(cloth.color, -30));
+      ctx.globalAlpha = 0.72;
+      const gradient = ctx.createLinearGradient(x, y, x, y + h);
+      gradient.addColorStop(0, baseColor);
+      gradient.addColorStop(1, adjustColor(baseColor, -35));
       ctx.fillStyle = gradient;
 
-      ctx.beginPath();
-      const neckWidth = shoulderWidth * 0.3;
-      const centerX = clothX + clothWidth / 2;
-
-      ctx.moveTo(centerX - neckWidth / 2, clothY);
-      ctx.lineTo(clothX, clothY + clothHeight * 0.1);
-      ctx.lineTo(clothX - shoulderWidth * 0.2, clothY + clothHeight * 0.35);
-      ctx.lineTo(clothX, clothY + clothHeight * 0.35);
-      ctx.lineTo(clothX, clothY + clothHeight);
-      ctx.lineTo(clothX + clothWidth, clothY + clothHeight);
-      ctx.lineTo(clothX + clothWidth, clothY + clothHeight * 0.35);
-      ctx.lineTo(clothX + clothWidth + shoulderWidth * 0.2, clothY + clothHeight * 0.35);
-      ctx.lineTo(clothX + clothWidth, clothY + clothHeight * 0.1);
-      ctx.lineTo(centerX + neckWidth / 2, clothY);
-      ctx.quadraticCurveTo(centerX, clothY + clothHeight * 0.08, centerX - neckWidth / 2, clothY);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = adjustColor(cloth.color, -50);
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(centerX - neckWidth / 2, clothY);
-      ctx.quadraticCurveTo(centerX, clothY + clothHeight * 0.08, centerX + neckWidth / 2, clothY);
-      ctx.stroke();
+      if (shape === 'top') {
+        const neckWidth = shoulderWidth * 0.3;
+        const centerX = x + w / 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX - neckWidth / 2, y);
+        ctx.lineTo(x, y + h * 0.1);
+        ctx.lineTo(x - shoulderWidth * 0.2, y + h * 0.35);
+        ctx.lineTo(x, y + h * 0.35);
+        ctx.lineTo(x, y + h);
+        ctx.lineTo(x + w, y + h);
+        ctx.lineTo(x + w, y + h * 0.35);
+        ctx.lineTo(x + w + shoulderWidth * 0.2, y + h * 0.35);
+        ctx.lineTo(x + w, y + h * 0.1);
+        ctx.lineTo(centerX + neckWidth / 2, y);
+        ctx.quadraticCurveTo(centerX, y + h * 0.08, centerX - neckWidth / 2, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = adjustColor(baseColor, -50);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(centerX - neckWidth / 2, y);
+        ctx.quadraticCurveTo(centerX, y + h * 0.08, centerX + neckWidth / 2, y);
+        ctx.stroke();
+      } else {
+        const radius = Math.max(6, Math.min(w, h) * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + w - radius, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+        ctx.lineTo(x + w, y + h - radius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+        ctx.lineTo(x + radius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = adjustColor(baseColor, -45);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
 
       ctx.restore();
+    };
+
+    if (garmentType === 'pants' || garmentType === 'shorts' || garmentType === 'skirt') {
+      const bottomWidth = hipWidth * (garmentType === 'skirt' ? 1.25 : 1.15);
+      const targetHeight = (() => {
+        if (garmentType === 'skirt') return thighHeight * 0.95;
+        if (garmentType === 'shorts') return thighHeight * 0.65;
+        return Math.max(legHeight * 1.05, torsoHeight * 0.9);
+      })();
+      const bottomX = Math.min(hipLeftX, hipRightX) - (bottomWidth - hipWidth) / 2;
+      const bottomY = hipY - targetHeight * 0.05;
+      drawImageOrGradient(bottomX, bottomY, bottomWidth, targetHeight, 'bottom');
+      const bodyWidth = hipWidth;
+      const fitRatio = bottomWidth / Math.max(bodyWidth, 1);
+      drawFitOverlay(ctx, { x: bottomX, y: bottomY, w: bottomWidth, h: targetHeight }, fitRatio);
+      return;
     }
+
+    if (garmentType === 'dress') {
+      const dressWidth = Math.max(shoulderWidth * 1.25, hipWidth * 1.3);
+      const dressHeight = torsoHeight + Math.max(legHeight * 0.9, thighHeight * 1.2);
+      const dressX = Math.min(mirroredLeftX, mirroredRightX) - (dressWidth - shoulderWidth) / 2;
+      const dressY = shoulderY - dressHeight * 0.08;
+      drawImageOrGradient(dressX, dressY, dressWidth, dressHeight, 'bottom');
+      const bodyWidth = Math.max(shoulderWidth, hipWidth);
+      const fitRatio = dressWidth / Math.max(bodyWidth, 1);
+      drawFitOverlay(ctx, { x: dressX, y: dressY, w: dressWidth, h: dressHeight }, fitRatio);
+      return;
+    }
+
+    // Default: top/outerwear anchored to torso
+    const clothWidth = shoulderWidth * 1.22;
+    const clothHeight = torsoHeight * 0.95;
+    const clothX = Math.min(mirroredLeftX, mirroredRightX) - (clothWidth - shoulderWidth) / 2;
+    const clothY = shoulderY + clothHeight * 0.04;
+    drawImageOrGradient(clothX, clothY, clothWidth, clothHeight, 'top');
+    const bodyWidth = Math.max(shoulderWidth, hipWidth * 0.9);
+    const fitRatio = clothWidth / Math.max(bodyWidth, 1);
+    drawFitOverlay(ctx, { x: clothX, y: clothY, w: clothWidth, h: clothHeight }, fitRatio);
   }, [clothImages]);
 
   useEffect(() => {
@@ -481,6 +703,12 @@ const CameraFeed = ({ selectedCloth }) => {
             width,
             height,
             { sx, sy, sWidth, sHeight, sourceWidth, sourceHeight }
+          );
+          drawSkeleton(
+            ctx,
+            poseRef.current,
+            { sx, sy, sWidth, sHeight, sourceWidth, sourceHeight },
+            { width, height }
           );
         }
       }
@@ -567,8 +795,8 @@ const CameraFeed = ({ selectedCloth }) => {
     }
 
     const metrics = computeCurrentMetrics();
-    if (!metrics) {
-      throw new Error('Body points not detected. Stand clearly in frame and try again.');
+    if (!metrics || metrics.confidence < MIN_CONFIDENCE) {
+      throw new Error('Body points not detected clearly. Stand in frame with full body visible.');
     }
 
     return {
@@ -630,8 +858,8 @@ const CameraFeed = ({ selectedCloth }) => {
       { width: sourceWidth, height: sourceHeight }
     );
 
-    if (!metrics) {
-      throw new Error('Unable to estimate body metrics from this image.');
+    if (!metrics || metrics.confidence < MIN_CONFIDENCE) {
+      throw new Error('Pose confidence too low. Upload a clearer, full-body photo.');
     }
 
     return {
@@ -707,6 +935,13 @@ const CameraFeed = ({ selectedCloth }) => {
       return;
     }
 
+    const frontConf = frontCapture?.metrics?.confidence ?? 0;
+    const sideConf = sideCapture?.metrics?.confidence ?? 0;
+    if (frontConf < MIN_CONFIDENCE || sideConf < MIN_CONFIDENCE) {
+      setSizeError('Front/side pose quality is low. Recapture clearer, full-body shots.');
+      return;
+    }
+
     setIsEstimating(true);
     setSizeError('');
 
@@ -732,9 +967,11 @@ const CameraFeed = ({ selectedCloth }) => {
             }
             : null,
           front: {
+            image: frontCapture.image,
             metrics: frontCapture.metrics
           },
           side: {
+            image: sideCapture.image,
             metrics: sideCapture.metrics
           }
         })
@@ -802,6 +1039,9 @@ const CameraFeed = ({ selectedCloth }) => {
           {selectedCloth && (
             <div className="selected-cloth-info">
               <p>Wearing: {selectedCloth.name}</p>
+              {cutoutUnavailable && (
+                <span className="selected-cloth-warning">Using original image (cutout unavailable)</span>
+              )}
             </div>
           )}
         </div>
