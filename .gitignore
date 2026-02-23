@@ -12,3 +12,8 @@ uploads/
 .vscode/
 client/build/
 data/
+ssh-key-*.download/
+server/scripts/.venv-segmentation/
+.venv/
+.venv*/
+clothes/dresscode-rembg/
