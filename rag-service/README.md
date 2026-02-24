@@ -29,11 +29,22 @@ Request: /chat
 
 ```bash
 WEAVIATE_HOST=http://weaviate:8080
+# (Weaviate Cloud also supported)
+# WEAVIATE_HOST=https://<cluster>.weaviate.cloud
+# or:
+# WEAVIATE_URL=<cluster>.weaviate.cloud
 WEAVIATE_API_KEY=<your-key>
 OPENAI_API_KEY=<optional-for-generation>
 HF_API_TOKEN=<optional-huggingface-token>
 HF_MODEL=mistralai/Mistral-7B-Instruct-v0.2
 ```
+
+## Render (Production)
+
+- Deploy as a Render **Web Service** using the repo `Dockerfile.rag`.
+- Ensure `WEAVIATE_HOST` points to a reachable Weaviate instance (Render doesn’t run `docker-compose`).
+- Health checks can use `/health` (and `/` also returns `200` for simple “is it up” checks).
+- After deploy, open `/docs` to try requests in the browser.
 
 ## Usage
 

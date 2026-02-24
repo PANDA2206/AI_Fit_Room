@@ -36,7 +36,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-12h}
       - PASSWORD_SALT_ROUNDS=${PASSWORD_SALT_ROUNDS:-10}
-      - WEAVIATE_HOST=http://weaviate:8080
+      - WEAVIATE_HOST=${WEAVIATE_HOST:-http://weaviate:8080}
+      - WEAVIATE_URL=${WEAVIATE_URL:-}
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
       - RAG_HOST=http://rag-service:8000
       - RAG_TIMEOUT_MS=${RAG_TIMEOUT_MS:-25000}
@@ -66,7 +67,9 @@ services:
     env_file:
       - .env.prod
     environment:
-      - WEAVIATE_HOST=http://weaviate:8080
+      - PORT=8000
+      - WEAVIATE_HOST=${WEAVIATE_HOST:-http://weaviate:8080}
+      - WEAVIATE_URL=${WEAVIATE_URL:-}
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - HF_API_TOKEN=${HF_API_TOKEN:-}

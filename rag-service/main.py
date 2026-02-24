@@ -6,8 +6,16 @@ from typing import Any, Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
+
+import io
+import base64
+import numpy as np
+from PIL import Image
+from rembg import remove
+import mediapipe as mp
 
 from langgraph.graph import END, StateGraph
 
@@ -15,7 +23,20 @@ from crawler import load_regulations
 
 load_dotenv()
 
-WEAVIATE_HOST = os.getenv("WEAVIATE_HOST", "http://weaviate:8080").rstrip("/")
+def normalize_weaviate_host(value: str) -> str:
+    host = (value or "").strip().rstrip("/")
+    if not host:
+        return ""
+    if host.startswith("http://") or host.startswith("https://"):
+        return host
+    return f"https://{host}"
+
+
+WEAVIATE_HOST = normalize_weaviate_host(
+    os.getenv("WEAVIATE_URL")
+    or os.getenv("WEAVIATE_HOST")
+    or "http://weaviate:8080"
+)
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY", "local-dev-key")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -34,6 +55,31 @@ CLASS_NAME_PATTERN = re.compile(r"^[A-Z][A-Za-z0-9_]*$")
 
 app = FastAPI(title="Fashion RAG Service")
 
+# Allow cross-origin so the frontend can call segmentation directly.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+async def root():
+    return {
+        "service": "fashion-rag-service",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+        "endpoints": {
+            "chat": {"method": "POST", "path": "/chat"},
+            "ingest": {"method": "POST", "path": "/ingest"},
+            "ingest_crawled": {"method": "POST", "path": "/ingest-crawled"},
+            "segment_cloth_only": {"method": "POST", "path": "/segment/cloth-only"},
+        },
+    }
+
 
 class IngestDoc(BaseModel):
     text: str = Field(min_length=1)
@@ -51,6 +97,11 @@ class IngestRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class ClothCutoutRequest(BaseModel):
+    imageUrl: str = Field(default="", alias="image_url")
+    imageBase64: str = Field(default="", alias="image_base64")
 
 
 class RagState(TypedDict):
@@ -530,4 +581,80 @@ async def health():
         "collection_exists": collection_exists,
         "weaviate_ready": weaviate_ready,
         "weaviate_error": weaviate_error,
+    }
+
+
+def fetch_image_bytes(url: str) -> bytes:
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch image: HTTP {response.status_code}")
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="URL did not return an image")
+    return response.content
+
+
+def decode_base64_image(data: str) -> bytes:
+    try:
+        stripped = data.replace("data:image/png;base64,", "").replace("data:image/jpeg;base64,", "")
+        return base64.b64decode(stripped)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=f"Invalid base64 image: {exc}")
+
+
+def remove_background_and_face(image_bytes: bytes) -> Image.Image:
+    # Background removal via U2Net (rembg)
+    cutout_bytes = remove(image_bytes)
+    cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
+
+    # Face removal using MediaPipe Face Detection (lightweight, CPU)
+    try:
+        mp_face = mp.solutions.face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
+        np_img = np.array(cutout.convert("RGB"))
+        results = mp_face.process(np_img)
+        if results.detections:
+          
+            w, h = cutout.size
+            alpha = np.array(cutout.getchannel("A"))
+            for det in results.detections:
+                box = det.location_data.relative_bounding_box
+                x_min = int(max(0, box.xmin) * w)
+                y_min = int(max(0, box.ymin) * h)
+                x_max = int(min(1, box.xmin + box.width) * w)
+                y_max = int(min(1, box.ymin + box.height) * h)
+                alpha[y_min:y_max, x_min:x_max] = 0
+            cutout.putalpha(Image.fromarray(alpha))
+    except Exception:
+        # If face detection fails, proceed with background-only cutout.
+        pass
+
+    return cutout
+
+
+def encode_png_base64(image: Image.Image) -> str:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+@app.post("/segment/cloth-only")
+async def cloth_only(req: ClothCutoutRequest):
+    image_url = (req.imageUrl or "").strip()
+    image_b64 = (req.imageBase64 or "").strip()
+
+    if not image_url and not image_b64:
+        raise HTTPException(status_code=400, detail="imageUrl or imageBase64 is required")
+
+    image_bytes = decode_base64_image(image_b64) if image_b64 else fetch_image_bytes(image_url)
+
+    cutout = remove_background_and_face(image_bytes)
+    alpha = np.array(cutout.getchannel("A"))
+    visible = int(np.count_nonzero(alpha > 0))
+    if visible < 2000:
+        raise HTTPException(status_code=422, detail="Segmentation too small or empty")
+
+    b64_png = encode_png_base64(cutout)
+    return {
+        "cutout": f"data:image/png;base64,{b64_png}",
+        "visible_pixels": visible,
     }
