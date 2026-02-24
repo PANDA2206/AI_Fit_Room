@@ -4,3 +4,7 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 langgraph==0.0.27
 python-dotenv==1.0.1
+rembg==2.0.56
+Pillow==10.3.0
+numpy==1.26.4
+mediapipe==0.10.14
