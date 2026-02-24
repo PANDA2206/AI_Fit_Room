@@ -6,6 +6,7 @@
 [context.production.environment]
   REACT_APP_API_URL = "https://ai-fit-room.onrender.com"
   REACT_APP_SOCKET_URL = "https://ai-fit-room.onrender.com"
+  REACT_APP_SEGMENTATION_URL = "https://ai-fit-room-9jfn.onrender.com"
 
 [context.branch-deploy.environment]
   REACT_APP_API_URL = "https://ai-fit-room-1.onrender.com"

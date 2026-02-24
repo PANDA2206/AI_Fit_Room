@@ -2,7 +2,11 @@ const express = require('express');
 
 const router = express.Router();
 
-const RAG_HOST = (process.env.RAG_HOST || 'http://localhost:8000').replace(/\/$/, '');
+const DEFAULT_RAG_HOST = process.env.NODE_ENV === 'production'
+  ? 'https://ai-fit-room-9jfn.onrender.com'
+  : 'http://localhost:8000';
+
+const RAG_HOST = (process.env.RAG_HOST || process.env.RAG_URL || DEFAULT_RAG_HOST).replace(/\/$/, '');
 const RAG_TIMEOUT_MS = Number.parseInt(process.env.RAG_TIMEOUT_MS || '25000', 10);
 
 async function callRag(path, { method = 'GET', body } = {}) {
