@@ -1,4 +1,5 @@
-const RAW_HOST = process.env.WEAVIATE_URL || process.env.WEAVIATE_HOST || 'http://weaviate:8080';
+const RAW_HOST = (process.env.WEAVIATE_URL || process.env.WEAVIATE_HOST || 'http://weaviate:8080')
+  .replace(/^['"]|['"]$/g, '');
 const DEFAULT_HOST = RAW_HOST.startsWith('http://') || RAW_HOST.startsWith('https://')
   ? RAW_HOST
   : `https://${RAW_HOST}`;

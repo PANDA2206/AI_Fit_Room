@@ -22,7 +22,7 @@ from crawler import load_regulations
 load_dotenv()
 
 def normalize_weaviate_host(value: str) -> str:
-    host = (value or "").strip().rstrip("/")
+    host = (value or "").strip().strip('"').strip("'").rstrip("/")
     if not host:
         return ""
     if host.startswith("http://") or host.startswith("https://"):
