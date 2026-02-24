@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import uuid
@@ -12,10 +14,6 @@ from typing_extensions import TypedDict
 
 import io
 import base64
-import numpy as np
-from PIL import Image
-from rembg import remove
-import mediapipe as mp
 
 from langgraph.graph import END, StateGraph
 
@@ -577,6 +575,7 @@ async def health():
     return {
         "status": "ok" if weaviate_ready else "degraded",
         "langgraph": "ready",
+        "weaviate_host": WEAVIATE_HOST,
         "collection": COLLECTION_NAME,
         "collection_exists": collection_exists,
         "weaviate_ready": weaviate_ready,
@@ -602,18 +601,27 @@ def decode_base64_image(data: str) -> bytes:
         raise HTTPException(status_code=400, detail=f"Invalid base64 image: {exc}")
 
 
-def remove_background_and_face(image_bytes: bytes) -> Image.Image:
+def remove_background_and_face(image_bytes: bytes) -> tuple[Any, int]:
+    # Lazy import so the API can boot quickly even if segmentation deps are heavy.
+    try:
+        import numpy as np
+        from PIL import Image
+        from rembg import remove
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=503, detail=f"Segmentation dependencies unavailable: {exc}") from exc
+
     # Background removal via U2Net (rembg)
     cutout_bytes = remove(image_bytes)
     cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
 
-    # Face removal using MediaPipe Face Detection (lightweight, CPU)
+    # Optional face removal using MediaPipe Face Detection (lightweight, CPU)
     try:
+        import mediapipe as mp
+
         mp_face = mp.solutions.face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
         np_img = np.array(cutout.convert("RGB"))
         results = mp_face.process(np_img)
         if results.detections:
-          
             w, h = cutout.size
             alpha = np.array(cutout.getchannel("A"))
             for det in results.detections:
@@ -628,10 +636,12 @@ def remove_background_and_face(image_bytes: bytes) -> Image.Image:
         # If face detection fails, proceed with background-only cutout.
         pass
 
-    return cutout
+    alpha = np.array(cutout.getchannel("A"))
+    visible = int(np.count_nonzero(alpha > 0))
+    return cutout, visible
 
 
-def encode_png_base64(image: Image.Image) -> str:
+def encode_png_base64(image: Any) -> str:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("ascii")
@@ -647,9 +657,7 @@ async def cloth_only(req: ClothCutoutRequest):
 
     image_bytes = decode_base64_image(image_b64) if image_b64 else fetch_image_bytes(image_url)
 
-    cutout = remove_background_and_face(image_bytes)
-    alpha = np.array(cutout.getchannel("A"))
-    visible = int(np.count_nonzero(alpha > 0))
+    cutout, visible = remove_background_and_face(image_bytes)
     if visible < 2000:
         raise HTTPException(status_code=422, detail="Segmentation too small or empty")
 
