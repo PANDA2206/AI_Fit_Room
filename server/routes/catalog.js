@@ -22,11 +22,12 @@ function stripWrappingQuotes(value = '') {
 }
 
 function normalizeCatalogMode(value = '') {
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return 'auto';
-  if (['auto', 'fallback', 'default'].includes(text)) return 'auto';
-  if (['local', 'fs', 'filesystem', 'disk'].includes(text)) return 'local';
-  if (['s3', 'tebi', 'bucket', 'remote'].includes(text)) return 's3';
+  const text = stripWrappingQuotes(value);
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) return 'auto';
+  if (['auto', 'fallback', 'default'].includes(normalized)) return 'auto';
+  if (['local', 'fs', 'filesystem', 'disk'].includes(normalized)) return 'local';
+  if (['s3', 'tebi', 'bucket', 'remote'].includes(normalized)) return 's3';
   return 'auto';
 }
 
