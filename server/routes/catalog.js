@@ -3,15 +3,30 @@ const express = require('express');
 const router = express.Router();
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
-const DEFAULT_PREFIX = String(process.env.CATALOG_S3_PREFIX || 'catalog/').trim();
+const DEFAULT_PREFIX = stripWrappingQuotes(process.env.CATALOG_S3_PREFIX || 'catalog/');
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
 
-const PRODUCT_IMAGE_PUBLIC_BASE_URL = String(process.env.PRODUCT_IMAGE_PUBLIC_BASE_URL || '')
-  .trim()
-  .replace(/\/+$/, '');
-const CATALOG_PUBLIC_BASE_URL = String(process.env.CATALOG_PUBLIC_BASE_URL || PRODUCT_IMAGE_PUBLIC_BASE_URL || '')
-  .trim()
+function stripWrappingQuotes(value = '') {
+  const text = String(value || '').trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"'))
+    || (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function ensureUrlScheme(value = '') {
+  const text = stripWrappingQuotes(value);
+  if (!text) return '';
+  if (/^https?:\/\//i.test(text)) return text;
+  return `https://${text}`;
+}
+
+const PRODUCT_IMAGE_PUBLIC_BASE_URL = ensureUrlScheme(process.env.PRODUCT_IMAGE_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+const CATALOG_PUBLIC_BASE_URL = ensureUrlScheme(process.env.CATALOG_PUBLIC_BASE_URL || PRODUCT_IMAGE_PUBLIC_BASE_URL || '')
   .replace(/\/+$/, '');
 
 const SIGNED_URL_EXPIRES_SEC = Math.max(
@@ -63,23 +78,23 @@ function getS3Config() {
     process.env.PRODUCT_IMAGE_S3_FORCE_PATH_STYLE ?? process.env.SUPABASE_S3_FORCE_PATH_STYLE ?? 'true'
   ).toLowerCase() !== 'false';
 
-  const regionFallback = endpoint.includes('tebi.io') ? 'global' : 'us-east-1';
+  const regionFallback = String(endpoint).includes('tebi.io') ? 'global' : 'us-east-1';
   const region = process.env.PRODUCT_IMAGE_S3_REGION || process.env.SUPABASE_S3_REGION || regionFallback;
 
   return {
-    bucket: String(bucket).trim(),
-    endpoint: String(endpoint).trim(),
-    accessKeyId: String(accessKeyId).trim(),
-    secretAccessKey: String(secretAccessKey).trim(),
-    region: String(region).trim(),
+    bucket: stripWrappingQuotes(bucket),
+    endpoint: ensureUrlScheme(endpoint),
+    accessKeyId: stripWrappingQuotes(accessKeyId),
+    secretAccessKey: stripWrappingQuotes(secretAccessKey),
+    region: stripWrappingQuotes(region),
     forcePathStyle
   };
 }
 
 function shouldSignUrls(config) {
-  const explicit = String(process.env.CATALOG_SIGNED_URLS || process.env.PRODUCT_IMAGE_S3_SIGNED_URLS || '')
-    .trim()
-    .toLowerCase();
+  const explicit = stripWrappingQuotes(
+    process.env.CATALOG_SIGNED_URLS || process.env.PRODUCT_IMAGE_S3_SIGNED_URLS || ''
+  ).toLowerCase();
   if (explicit === 'true') return true;
   if (explicit === 'false') return false;
   return Boolean(config.accessKeyId && config.secretAccessKey);
@@ -138,6 +153,78 @@ function deriveSubcategory(prefix, key) {
   }
   return 'catalog';
 }
+
+router.get('/health', async (req, res) => {
+  const config = getS3Config();
+  const prefix = String(req.query.prefix || DEFAULT_PREFIX).trim();
+  const configured = Boolean(config.bucket && config.endpoint);
+  const credentialsConfigured = Boolean(config.accessKeyId && config.secretAccessKey);
+
+  const baseReport = {
+    ok: false,
+    checkedAt: new Date().toISOString(),
+    configured,
+    credentialsConfigured,
+    bucket: config.bucket || null,
+    endpoint: config.endpoint || null,
+    region: config.region || null,
+    forcePathStyle: config.forcePathStyle,
+    signedUrls: shouldSignUrls(config),
+    publicBaseUrl: CATALOG_PUBLIC_BASE_URL || null,
+    prefix
+  };
+
+  if (!configured) {
+    return res.json({
+      ...baseReport,
+      error: 'Catalog bucket is not configured',
+      requiredEnv: [
+        'PRODUCT_IMAGE_S3_BUCKET',
+        'PRODUCT_IMAGE_S3_ENDPOINT',
+        'PRODUCT_IMAGE_S3_ACCESS_KEY_ID',
+        'PRODUCT_IMAGE_S3_SECRET_ACCESS_KEY'
+      ]
+    });
+  }
+
+  const client = getS3Client(config);
+  if (!client) {
+    return res.json({
+      ...baseReport,
+      error: 'Catalog S3 client is not configured',
+      requiredEnv: [
+        'PRODUCT_IMAGE_S3_ACCESS_KEY_ID',
+        'PRODUCT_IMAGE_S3_SECRET_ACCESS_KEY'
+      ]
+    });
+  }
+
+  try {
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    const response = await client.send(new ListObjectsV2Command({
+      Bucket: config.bucket,
+      Prefix: prefix,
+      MaxKeys: 1
+    }));
+
+    const sampleKeys = (response.Contents || [])
+      .map((item) => item.Key)
+      .filter(Boolean)
+      .slice(0, 1);
+
+    return res.json({
+      ...baseReport,
+      ok: true,
+      sampleKeys
+    });
+  } catch (error) {
+    return res.json({
+      ...baseReport,
+      error: error?.message || String(error),
+      errorName: error?.name || null
+    });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -217,4 +304,3 @@ router.get('/', async (req, res) => {
 });
 
 module.exports = router;
-

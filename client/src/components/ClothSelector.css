@@ -92,6 +92,18 @@
   line-height: 1.35;
 }
 
+.catalog-warning a,
+.no-results a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.catalog-warning a:hover,
+.no-results a:hover {
+  color: var(--accent);
+}
+
 .audience-filter {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

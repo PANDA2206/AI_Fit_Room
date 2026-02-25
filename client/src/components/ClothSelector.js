@@ -7,6 +7,7 @@ const DEFAULT_API_URL = process.env.NODE_ENV === 'production'
   : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
 
 const API_URL = process.env.REACT_APP_API_URL || DEFAULT_API_URL;
+const CATALOG_HEALTH_URL = `${API_URL.replace(/\/+$/, '')}/api/catalog/health`;
 const LOCAL_SVG_SOURCE = 'local-svgs';
 const CATALOG_SOURCE = 'catalog';
 const DRESSCODE_SOURCE = 'dresscode-rembg';
@@ -169,23 +170,38 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
         return catalogCacheRef.current;
       }
 
-      const text = await response.text();
-      remoteFailure = text ? `${response.status} ${text}` : `${response.status}`;
+      const text = await response.text().catch(() => '');
+      try {
+        const parsed = text ? JSON.parse(text) : null;
+        const error = parsed && typeof parsed === 'object' ? parsed.error : '';
+        const required = parsed && typeof parsed === 'object' && Array.isArray(parsed.requiredEnv) ? parsed.requiredEnv : [];
+        const suffix = required.length ? ` (missing: ${required.slice(0, 6).join(', ')})` : '';
+        remoteFailure = `${response.status}${error ? ` ${error}` : ''}${suffix}`;
+      } catch (_parseError) {
+        remoteFailure = text ? `${response.status} ${text}` : `${response.status}`;
+      }
     } catch (_error) {
       remoteFailure = _error?.message ? String(_error.message) : 'Network error';
     }
 
-    const fallbackResponse = await fetch(`${API_URL}/clothes/metadata.json`, { cache: 'no-store' });
-    if (!fallbackResponse.ok) {
-      throw new Error(`Failed to load catalog metadata (${fallbackResponse.status})`);
+    try {
+      const fallbackResponse = await fetch(`${API_URL}/clothes/metadata.json`, { cache: 'no-store' });
+      if (!fallbackResponse.ok) {
+        throw new Error(`Fallback catalog returned ${fallbackResponse.status}`);
+      }
+      const data = await fallbackResponse.json();
+      catalogCacheRef.current = Array.isArray(data) ? data : [];
+      catalogCacheAtRef.current = Date.now();
+      if (remoteFailure) {
+        setCatalogWarning(`Using fallback catalog (S3 catalog unavailable: ${remoteFailure.slice(0, 180)})`);
+      }
+      return catalogCacheRef.current;
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError?.message ? String(fallbackError.message) : 'Fallback failed';
+      throw new Error(
+        `Catalog unavailable (${remoteFailure || 'unknown error'}). ${fallbackMessage}. Check ${CATALOG_HEALTH_URL}`
+      );
     }
-    const data = await fallbackResponse.json();
-    catalogCacheRef.current = Array.isArray(data) ? data : [];
-    catalogCacheAtRef.current = Date.now();
-    if (remoteFailure) {
-      setCatalogWarning(`Using fallback catalog (S3 catalog unavailable: ${remoteFailure.slice(0, 180)})`);
-    }
-    return catalogCacheRef.current;
   }, []);
 
   const normalizeCloth = useCallback((cloth = {}) => {
@@ -215,10 +231,10 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
   }, [productSource, resolveBackendAssetUrl]);
 
   const fetchClothes = useCallback(async (category = null, search = null, sourceOverride) => {
+    const source = sourceOverride || productSource;
     try {
       setLoading(true);
       setLoadError('');
-      const source = sourceOverride || productSource;
 
       if (source === CATALOG_SOURCE) {
         const catalog = await loadCatalogMetadata();
@@ -337,7 +353,8 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
       setLoading(false);
     } catch (error) {
       console.error('Error fetching clothes:', error);
-      setLoadError('Unable to load fashion catalog right now.');
+      const message = error?.message ? String(error.message) : 'Unable to load fashion catalog right now.';
+      setLoadError(source === CATALOG_SOURCE ? message.slice(0, 240) : 'Unable to load fashion catalog right now.');
       setClothes([]);
       setBrokenImageIds(new Set());
       setLoading(false);
@@ -567,7 +584,10 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
 
       {catalogWarning && productSource === CATALOG_SOURCE && (
         <div className="catalog-warning" role="status">
-          {catalogWarning}
+          {catalogWarning}{' '}
+          <a href={CATALOG_HEALTH_URL} target="_blank" rel="noreferrer">
+            Catalog health
+          </a>
         </div>
       )}
 
@@ -669,7 +689,18 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
 
       {filteredClothes.length === 0 && !loading && (
         <div className="no-results">
-          {loadError || 'No styles found for this section. Try another filter.'}
+          {loadError ? (
+            <span>
+              {loadError}{' '}
+              {productSource === CATALOG_SOURCE && (
+                <a href={CATALOG_HEALTH_URL} target="_blank" rel="noreferrer">
+                  Catalog health
+                </a>
+              )}
+            </span>
+          ) : (
+            'No styles found for this section. Try another filter.'
+          )}
         </div>
       )}
     </div>
