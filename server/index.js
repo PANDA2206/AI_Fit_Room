@@ -16,13 +16,40 @@ const cartRoutes = require('./routes/cart');
 const { bootstrapDatabase } = require('./db/bootstrap');
 const { closePool } = require('./db/client');
 
+function stripWrappingQuotes(value = '') {
+  const text = String(value || '').trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"'))
+    || (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function normalizeOrigin(value = '') {
+  const raw = stripWrappingQuotes(value);
+  if (!raw) return '';
+  if (raw === '*') return '*';
+
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    return new URL(withScheme).origin;
+  } catch (_error) {
+    return withScheme.replace(/\/+$/, '');
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
-const configuredOrigins = (process.env.CLIENT_URL || '')
+const rawClientUrl = process.env.CLIENT_URL || '';
+const originCandidates = rawClientUrl
   .split(',')
-  .map((origin) => origin.trim())
+  .map((value) => normalizeOrigin(value))
   .filter(Boolean);
-const corsOrigin = configuredOrigins.length > 0 ? configuredOrigins : true;
+const allowAllOrigins = originCandidates.some((value) => value === '*');
+const configuredOrigins = [...new Set(originCandidates.filter((value) => value !== '*'))];
+const corsOrigin = allowAllOrigins || configuredOrigins.length === 0 ? true : configuredOrigins;
 
 const io = socketIo(server, {
   cors: {
@@ -60,6 +87,10 @@ app.get('/api/health', (req, res) => {
       externalUrl: process.env.RENDER_EXTERNAL_URL || null,
       gitBranch: process.env.RENDER_GIT_BRANCH || null,
       gitCommit: process.env.RENDER_GIT_COMMIT || null
+    },
+    cors: {
+      clientUrlEnv: rawClientUrl ? String(rawClientUrl) : null,
+      allowedOrigins: corsOrigin === true ? ['*'] : corsOrigin
     }
   });
 });
