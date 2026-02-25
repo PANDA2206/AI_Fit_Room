@@ -237,7 +237,9 @@ function deriveSubcategory(prefix, key) {
 }
 
 router.get('/health', async (req, res) => {
-  const requestedMode = normalizeCatalogMode(req.query.mode || process.env.CATALOG_MODE || '');
+  const rawQueryMode = req.query.mode;
+  const rawEnvMode = process.env.CATALOG_MODE;
+  const requestedMode = normalizeCatalogMode(rawQueryMode || rawEnvMode || '');
   const config = getS3Config();
   const prefix = String(req.query.prefix || DEFAULT_PREFIX).trim();
   const configured = Boolean(config.bucket && config.endpoint);
@@ -265,6 +267,9 @@ router.get('/health', async (req, res) => {
     signedUrls: shouldSignUrls(config),
     publicBaseUrl: CATALOG_PUBLIC_BASE_URL || null,
     prefix,
+    requestedMode,
+    catalogModeEnv: rawEnvMode ? String(rawEnvMode) : null,
+    catalogModeQuery: rawQueryMode ? String(rawQueryMode) : null,
     localCount,
     localError
   };
