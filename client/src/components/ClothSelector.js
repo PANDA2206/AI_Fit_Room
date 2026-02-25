@@ -10,6 +10,8 @@ const API_URL = process.env.REACT_APP_API_URL || DEFAULT_API_URL;
 const LOCAL_SVG_SOURCE = 'local-svgs';
 const CATALOG_SOURCE = 'catalog';
 const DRESSCODE_SOURCE = 'dresscode-rembg';
+const CATALOG_PAGE_LIMIT = 500;
+const CATALOG_CACHE_TTL_MS = 60_000;
 
 const normalizeInitialSource = (value) => {
   const raw = String(value || '').trim();
@@ -127,7 +129,9 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
   const [productSource, setProductSource] = useState(PRODUCT_SOURCE);
   const [searchTerm, setSearchTerm] = useState('');
   const [brokenImageIds, setBrokenImageIds] = useState(() => new Set());
+  const [catalogWarning, setCatalogWarning] = useState('');
   const catalogCacheRef = useRef(null);
+  const catalogCacheAtRef = useRef(0);
   const searchTimeoutRef = useRef(null);
 
   const humanizeText = useCallback((value) => {
@@ -146,20 +150,29 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
   }, []);
 
   const loadCatalogMetadata = useCallback(async () => {
+    const now = Date.now();
     if (Array.isArray(catalogCacheRef.current)) {
-      return catalogCacheRef.current;
+      if (now - catalogCacheAtRef.current < CATALOG_CACHE_TTL_MS) {
+        return catalogCacheRef.current;
+      }
     }
 
+    let remoteFailure = '';
     try {
-      const response = await fetch(`${API_URL}/api/catalog?limit=200`, { cache: 'no-store' });
+      const response = await fetch(`${API_URL}/api/catalog?limit=${CATALOG_PAGE_LIMIT}`, { cache: 'no-store' });
       if (response.ok) {
         const payload = await response.json();
         const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
         catalogCacheRef.current = items;
+        catalogCacheAtRef.current = Date.now();
+        setCatalogWarning('');
         return catalogCacheRef.current;
       }
+
+      const text = await response.text();
+      remoteFailure = text ? `${response.status} ${text}` : `${response.status}`;
     } catch (_error) {
-      // ignore and fall back to local metadata.
+      remoteFailure = _error?.message ? String(_error.message) : 'Network error';
     }
 
     const fallbackResponse = await fetch(`${API_URL}/clothes/metadata.json`, { cache: 'no-store' });
@@ -168,6 +181,10 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
     }
     const data = await fallbackResponse.json();
     catalogCacheRef.current = Array.isArray(data) ? data : [];
+    catalogCacheAtRef.current = Date.now();
+    if (remoteFailure) {
+      setCatalogWarning(`Using fallback catalog (S3 catalog unavailable: ${remoteFailure.slice(0, 180)})`);
+    }
     return catalogCacheRef.current;
   }, []);
 
@@ -326,6 +343,14 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
       setLoading(false);
     }
   }, [categoryField, humanizeText, loadCatalogMetadata, normalizeCloth, productSource]);
+
+  const handleCatalogRefresh = useCallback(async () => {
+    if (productSource !== CATALOG_SOURCE) return;
+    catalogCacheRef.current = null;
+    catalogCacheAtRef.current = 0;
+    setCatalogWarning('');
+    await fetchClothes(selectedCategory, searchTerm, CATALOG_SOURCE);
+  }, [fetchClothes, productSource, searchTerm, selectedCategory]);
 
   const fetchCategories = useCallback(async (sourceOverride) => {
     try {
@@ -527,7 +552,24 @@ const ClothSelector = ({ onSelect, selectedCloth }) => {
           onChange={handleSearch}
           className="search-input"
         />
+        {productSource === CATALOG_SOURCE && (
+          <button
+            type="button"
+            className="catalog-refresh-btn"
+            onClick={handleCatalogRefresh}
+            disabled={loading}
+            title="Refresh catalog from bucket"
+          >
+            Refresh
+          </button>
+        )}
       </div>
+
+      {catalogWarning && productSource === CATALOG_SOURCE && (
+        <div className="catalog-warning" role="status">
+          {catalogWarning}
+        </div>
+      )}
 
       <div className="source-filter">
         {SOURCE_OPTIONS.map((option) => (
