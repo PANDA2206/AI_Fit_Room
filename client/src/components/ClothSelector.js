@@ -4,7 +4,7 @@ import './ClothSelector.css';
 
 const DEFAULT_API_URL = process.env.NODE_ENV === 'production'
   ? 'https://ai-fit-room.onrender.com'
-  : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+  : 'http://localhost:5001';
 
 const API_URL = process.env.REACT_APP_API_URL || DEFAULT_API_URL;
 const CATALOG_HEALTH_URL = `${API_URL.replace(/\/+$/, '')}/api/catalog/health`;

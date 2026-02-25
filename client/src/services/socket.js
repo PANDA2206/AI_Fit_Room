@@ -2,7 +2,7 @@ import { io } from 'socket.io-client';
 
 const DEFAULT_SOCKET_URL = process.env.NODE_ENV === 'production'
   ? 'https://ai-fit-room.onrender.com'
-  : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
+  : 'http://localhost:5001';
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || DEFAULT_SOCKET_URL;
 

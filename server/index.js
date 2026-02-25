@@ -40,16 +40,94 @@ function normalizeOrigin(value = '') {
   }
 }
 
+function parseCorsRules(clientUrlEnv = '') {
+  const raw = String(clientUrlEnv || '').trim();
+  const tokens = raw
+    .split(',')
+    .map((value) => stripWrappingQuotes(value).trim())
+    .filter(Boolean);
+
+  const exactOrigins = new Set();
+  const wildcardHosts = [];
+
+  let allowAll = tokens.length === 0;
+
+  for (const token of tokens) {
+    if (token === '*') {
+      allowAll = true;
+      continue;
+    }
+
+    const wildcardMatch = token.match(/^(https?:\/\/)?\*\.(.+)$/i);
+    if (wildcardMatch) {
+      const protocol = wildcardMatch[1] ? wildcardMatch[1].toLowerCase().replace(/\/+$/, '') : null;
+      wildcardHosts.push({
+        protocol,
+        suffix: wildcardMatch[2].toLowerCase()
+      });
+      continue;
+    }
+
+    const normalized = normalizeOrigin(token);
+    if (normalized && normalized !== '*') {
+      exactOrigins.add(normalized);
+    }
+  }
+
+  return {
+    allowAll,
+    exactOrigins: [...exactOrigins],
+    wildcardHosts
+  };
+}
+
+function buildCorsOrigin(corsRules) {
+  if (!corsRules || corsRules.allowAll) {
+    return true;
+  }
+
+  const exactOrigins = Array.isArray(corsRules.exactOrigins) ? corsRules.exactOrigins : [];
+  const wildcardHosts = Array.isArray(corsRules.wildcardHosts) ? corsRules.wildcardHosts : [];
+
+  if (wildcardHosts.length === 0) {
+    return exactOrigins.length === 0 ? true : exactOrigins;
+  }
+
+  const exactSet = new Set(exactOrigins);
+
+  return (origin, callback) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (exactSet.has(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    try {
+      const url = new URL(origin);
+      const host = url.hostname.toLowerCase();
+
+      const matchesWildcard = wildcardHosts.some((rule) => {
+        if (!rule || !rule.suffix) return false;
+        if (rule.protocol && url.protocol !== rule.protocol) return false;
+        return host === rule.suffix || host.endsWith(`.${rule.suffix}`);
+      });
+
+      callback(null, matchesWildcard);
+    } catch (_error) {
+      callback(null, false);
+    }
+  };
+}
+
 const app = express();
 const server = http.createServer(app);
 const rawClientUrl = process.env.CLIENT_URL || '';
-const originCandidates = rawClientUrl
-  .split(',')
-  .map((value) => normalizeOrigin(value))
-  .filter(Boolean);
-const allowAllOrigins = originCandidates.some((value) => value === '*');
-const configuredOrigins = [...new Set(originCandidates.filter((value) => value !== '*'))];
-const corsOrigin = allowAllOrigins || configuredOrigins.length === 0 ? true : configuredOrigins;
+const corsRules = parseCorsRules(rawClientUrl);
+const corsOrigin = buildCorsOrigin(corsRules);
 
 const io = socketIo(server, {
   cors: {
@@ -77,6 +155,14 @@ app.get('/', (req, res) => {
 
 // Routes
 app.get('/api/health', (req, res) => {
+  const wildcardOrigins = (corsRules.wildcardHosts || []).map((rule) => {
+    if (!rule || !rule.suffix) return null;
+    if (rule.protocol) {
+      return `${rule.protocol}//*.${rule.suffix}`;
+    }
+    return `*.${rule.suffix}`;
+  }).filter(Boolean);
+
   res.json({
     status: 'OK',
     message: 'Server is running',
@@ -90,7 +176,9 @@ app.get('/api/health', (req, res) => {
     },
     cors: {
       clientUrlEnv: rawClientUrl ? String(rawClientUrl) : null,
-      allowedOrigins: corsOrigin === true ? ['*'] : corsOrigin
+      allowedOrigins: corsRules.allowAll
+        ? ['*']
+        : [...(corsRules.exactOrigins || []), ...wildcardOrigins]
     }
   });
 });
