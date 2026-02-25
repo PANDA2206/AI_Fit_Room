@@ -41,6 +41,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/clothes', express.static(path.join(__dirname, '../clothes')));
+app.use('/catalog', express.static(path.join(__dirname, '../catalog')));
 
 // Friendly root message so cloud deployments show a live indicator instead of 404
 app.get('/', (req, res) => {

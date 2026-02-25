@@ -160,33 +160,30 @@ const CameraFeed = ({ selectedCloth }) => {
         img.src = src;
       });
 
+      const loadCandidate = async (src) => {
+        const loadedWithCors = await tryLoad(src, 'anonymous');
+        if (loadedWithCors) return true;
+        return tryLoad(src, undefined);
+      };
+
       const cutoutUrl = await fetchCutout();
       const hasCutout = Boolean(cutoutUrl);
-      setCutoutUnavailable(!hasCutout);
 
-      // If no cutout is available, skip overlaying to avoid showing background/person.
-      if (!hasCutout) return;
-
-      const candidateSrc = cutoutUrl;
-
-      // First try with CORS; if the bucket lacks CORS, retry without it (canvas will be tainted but we only draw).
-      const loadedWithCors = await tryLoad(candidateSrc, 'anonymous');
-      let loadedImage = loadedWithCors;
-      if (!loadedWithCors) {
-        loadedImage = await tryLoad(candidateSrc, undefined);
+      let loaded = false;
+      if (hasCutout) {
+        loaded = await loadCandidate(cutoutUrl);
       }
 
-      // If cutout failed to load, fall back to the original image so the user still sees something.
-      if (!loadedImage) {
-        const originalLoadedWithCors = await tryLoad(selectedCloth.image, 'anonymous');
-        let originalLoaded = originalLoadedWithCors;
-        if (!originalLoadedWithCors) {
-          originalLoaded = await tryLoad(selectedCloth.image, undefined);
-        }
-        setCutoutUnavailable(true);
-        if (!originalLoaded) {
-          console.warn(`Failed to load cloth image or fallback: ${candidateSrc}`);
-        }
+      if (loaded) {
+        setCutoutUnavailable(false);
+        return;
+      }
+
+      // Fall back to the original image so the try-on overlay still shows something.
+      setCutoutUnavailable(true);
+      const originalLoaded = await loadCandidate(selectedCloth.image);
+      if (!originalLoaded) {
+        console.warn(`Failed to load cloth image: ${selectedCloth.image}`);
       }
     };
 

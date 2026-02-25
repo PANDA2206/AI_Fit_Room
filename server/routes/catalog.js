@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
 
@@ -6,6 +8,7 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const DEFAULT_PREFIX = stripWrappingQuotes(process.env.CATALOG_S3_PREFIX || 'catalog/');
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
+const LOCAL_CATALOG_DIR = path.join(__dirname, '../../catalog');
 
 function stripWrappingQuotes(value = '') {
   const text = String(value || '').trim();
@@ -62,11 +65,80 @@ function looksLikeImageKey(key = '') {
   return IMAGE_EXTENSIONS.has(getExtension(key));
 }
 
+function isAppleDoubleFile(filename = '') {
+  return String(filename || '').startsWith('._');
+}
+
 function humanizeStem(value = '') {
   return String(value || '')
     .trim()
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function guessLocalSubcategory(stem = '') {
+  const text = String(stem || '').toLowerCase();
+  const rules = [
+    ['hoodie', /\bhood/i],
+    ['jacket', /\bjacket/i],
+    ['cardigan', /\bcardig/i],
+    ['sweater', /\bsweater/i],
+    ['tshirt', /\bt-?shirts?\b|\btshirts?\b|\btee\b/i],
+    ['turtleneck', /\bturtle/i],
+    ['zip', /\bzip\b/i],
+    ['shirt', /\bshirt\b/i]
+  ];
+
+  for (const [label, pattern] of rules) {
+    if (pattern.test(text)) return label;
+  }
+
+  return 'catalog';
+}
+
+async function listLocalCatalogFilenames() {
+  try {
+    const entries = await fs.promises.readdir(LOCAL_CATALOG_DIR, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter(Boolean)
+      .filter((name) => !isAppleDoubleFile(name))
+      .filter((name) => looksLikeImageKey(name))
+      .sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    if (error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function buildLocalCatalogItems({ limit, search } = {}) {
+  const filenames = await listLocalCatalogFilenames();
+  const normalizedSearch = typeof search === 'string' ? search.trim().toLowerCase() : '';
+  const filtered = normalizedSearch
+    ? filenames.filter((name) => name.toLowerCase().includes(normalizedSearch))
+    : filenames;
+
+  const slice = typeof limit === 'number' && Number.isFinite(limit) ? filtered.slice(0, limit) : filtered;
+
+  return slice.map((filename) => {
+    const stem = filename.replace(/\.[^/.]+$/, '');
+    const title = humanizeStem(stem);
+    const encoded = encodeObjectKey(filename);
+    return {
+      id: `catalog/${filename}`,
+      title,
+      name: title,
+      source: 'catalog',
+      sourceId: `catalog/${filename}`,
+      category: 'catalog',
+      subcategory: guessLocalSubcategory(stem),
+      imageUrl: `/catalog/${encoded}`,
+      thumbnailUrl: `/catalog/${encoded}`
+    };
+  });
 }
 
 function getS3Config() {
@@ -160,8 +232,18 @@ router.get('/health', async (req, res) => {
   const configured = Boolean(config.bucket && config.endpoint);
   const credentialsConfigured = Boolean(config.accessKeyId && config.secretAccessKey);
 
+  let localCount = 0;
+  let localError = null;
+  try {
+    const filenames = await listLocalCatalogFilenames();
+    localCount = filenames.length;
+  } catch (error) {
+    localError = error?.message || String(error);
+  }
+
   const baseReport = {
     ok: false,
+    mode: null,
     checkedAt: new Date().toISOString(),
     configured,
     credentialsConfigured,
@@ -171,13 +253,52 @@ router.get('/health', async (req, res) => {
     forcePathStyle: config.forcePathStyle,
     signedUrls: shouldSignUrls(config),
     publicBaseUrl: CATALOG_PUBLIC_BASE_URL || null,
-    prefix
+    prefix,
+    localCount,
+    localError
   };
+
+  const client = getS3Client(config);
+
+  try {
+    if (configured && client) {
+      const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+      const response = await client.send(new ListObjectsV2Command({
+        Bucket: config.bucket,
+        Prefix: prefix,
+        MaxKeys: 1
+      }));
+
+      const sampleKeys = (response.Contents || [])
+        .map((item) => item.Key)
+        .filter(Boolean)
+        .slice(0, 1);
+
+      return res.json({
+        ...baseReport,
+        ok: true,
+        mode: 's3',
+        sampleKeys
+      });
+    }
+  } catch (error) {
+    // fall through to local fallback
+    baseReport.s3Error = error?.message || String(error);
+    baseReport.s3ErrorName = error?.name || null;
+  }
+
+  if (localCount > 0) {
+    return res.json({
+      ...baseReport,
+      ok: true,
+      mode: 'local'
+    });
+  }
 
   if (!configured) {
     return res.json({
       ...baseReport,
-      error: 'Catalog bucket is not configured',
+      error: 'Catalog is not configured (no S3 and no local catalog)',
       requiredEnv: [
         'PRODUCT_IMAGE_S3_BUCKET',
         'PRODUCT_IMAGE_S3_ENDPOINT',
@@ -187,11 +308,10 @@ router.get('/health', async (req, res) => {
     });
   }
 
-  const client = getS3Client(config);
   if (!client) {
     return res.json({
       ...baseReport,
-      error: 'Catalog S3 client is not configured',
+      error: 'Catalog S3 client is not configured and no local catalog is available',
       requiredEnv: [
         'PRODUCT_IMAGE_S3_ACCESS_KEY_ID',
         'PRODUCT_IMAGE_S3_SECRET_ACCESS_KEY'
@@ -199,105 +319,88 @@ router.get('/health', async (req, res) => {
     });
   }
 
-  try {
-    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
-    const response = await client.send(new ListObjectsV2Command({
-      Bucket: config.bucket,
-      Prefix: prefix,
-      MaxKeys: 1
-    }));
-
-    const sampleKeys = (response.Contents || [])
-      .map((item) => item.Key)
-      .filter(Boolean)
-      .slice(0, 1);
-
-    return res.json({
-      ...baseReport,
-      ok: true,
-      sampleKeys
-    });
-  } catch (error) {
-    return res.json({
-      ...baseReport,
-      error: error?.message || String(error),
-      errorName: error?.name || null
-    });
-  }
+  return res.json({
+    ...baseReport,
+    error: 'Catalog is unavailable (S3 failed and local catalog empty)'
+  });
 });
 
 router.get('/', async (req, res) => {
   try {
     const config = getS3Config();
-    if (!config.bucket || !config.endpoint) {
-      return res.status(501).json({
-        error: 'Catalog bucket is not configured',
-        requiredEnv: [
-          'PRODUCT_IMAGE_S3_BUCKET',
-          'PRODUCT_IMAGE_S3_ENDPOINT',
-          'PRODUCT_IMAGE_S3_ACCESS_KEY_ID',
-          'PRODUCT_IMAGE_S3_SECRET_ACCESS_KEY'
-        ]
-      });
-    }
-
     const prefix = String(req.query.prefix || DEFAULT_PREFIX).trim();
     const limit = Math.min(parsePositiveInt(req.query.limit, DEFAULT_LIMIT), MAX_LIMIT);
     const continuationToken = typeof req.query.continuationToken === 'string' ? req.query.continuationToken : undefined;
     const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
 
+    const canTryS3 = Boolean(config.bucket && config.endpoint);
     const client = getS3Client(config);
-    if (!client) {
-      return res.status(501).json({
-        error: 'Catalog S3 client is not configured',
-        requiredEnv: [
-          'PRODUCT_IMAGE_S3_ACCESS_KEY_ID',
-          'PRODUCT_IMAGE_S3_SECRET_ACCESS_KEY'
-        ]
-      });
+    const canUseS3 = canTryS3 && Boolean(client);
+
+    if (canUseS3) {
+      try {
+        const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+        const response = await client.send(new ListObjectsV2Command({
+          Bucket: config.bucket,
+          Prefix: prefix,
+          MaxKeys: limit,
+          ContinuationToken: continuationToken
+        }));
+
+        const keys = (response.Contents || [])
+          .map((item) => item.Key)
+          .filter(Boolean)
+          .filter((key) => !key.endsWith('/'))
+          .filter((key) => looksLikeImageKey(key))
+          .filter((key) => (search ? key.toLowerCase().includes(search) : true));
+
+        const items = await Promise.all(keys.map(async (key) => {
+          const file = key.split('/').pop() || key;
+          const stem = file.replace(/\.[^/.]+$/, '');
+          const title = humanizeStem(stem);
+          const url = await buildObjectUrl(config, key);
+          return {
+            id: key,
+            title,
+            name: title,
+            source: 'catalog',
+            sourceId: key,
+            category: 'catalog',
+            subcategory: deriveSubcategory(prefix, key),
+            imageUrl: url,
+            thumbnailUrl: url
+          };
+        }));
+
+        return res.json({
+          prefix,
+          mode: 's3',
+          items,
+          nextContinuationToken: response.NextContinuationToken || null
+        });
+      } catch (error) {
+        // fall back to local catalog below
+        const fallbackItems = await buildLocalCatalogItems({ limit, search });
+        return res.json({
+          prefix,
+          mode: 'local',
+          items: fallbackItems,
+          nextContinuationToken: null,
+          s3Error: error?.message || String(error)
+        });
+      }
     }
 
-    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
-    const response = await client.send(new ListObjectsV2Command({
-      Bucket: config.bucket,
-      Prefix: prefix,
-      MaxKeys: limit,
-      ContinuationToken: continuationToken
-    }));
-
-    const keys = (response.Contents || [])
-      .map((item) => item.Key)
-      .filter(Boolean)
-      .filter((key) => !key.endsWith('/'))
-      .filter((key) => looksLikeImageKey(key))
-      .filter((key) => (search ? key.toLowerCase().includes(search) : true));
-
-    const items = await Promise.all(keys.map(async (key) => {
-      const file = key.split('/').pop() || key;
-      const stem = file.replace(/\.[^/.]+$/, '');
-      const title = humanizeStem(stem);
-      const url = await buildObjectUrl(config, key);
-      return {
-        id: key,
-        title,
-        name: title,
-        source: 'catalog',
-        sourceId: key,
-        category: 'catalog',
-        subcategory: deriveSubcategory(prefix, key),
-        imageUrl: url,
-        thumbnailUrl: url
-      };
-    }));
-
+    const items = await buildLocalCatalogItems({ limit, search });
     return res.json({
       prefix,
+      mode: 'local',
       items,
-      nextContinuationToken: response.NextContinuationToken || null
+      nextContinuationToken: null
     });
   } catch (error) {
     return res.status(500).json({
-      error: 'Failed to load catalog from bucket',
+      error: 'Failed to load catalog',
       detail: error.message || String(error)
     });
   }

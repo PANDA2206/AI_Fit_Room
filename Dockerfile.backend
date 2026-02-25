@@ -12,6 +12,7 @@ RUN npm install --production
 # Copy server code
 COPY server ./server
 COPY clothes ./clothes
+COPY catalog ./catalog
 
 EXPOSE 5001
 
