@@ -49,7 +49,18 @@ app.get('/', (req, res) => {
 
 // Routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+  res.json({
+    status: 'OK',
+    message: 'Server is running',
+    checkedAt: new Date().toISOString(),
+    nodeEnv: process.env.NODE_ENV || null,
+    render: {
+      serviceName: process.env.RENDER_SERVICE_NAME || null,
+      externalUrl: process.env.RENDER_EXTERNAL_URL || null,
+      gitBranch: process.env.RENDER_GIT_BRANCH || null,
+      gitCommit: process.env.RENDER_GIT_COMMIT || null
+    }
+  });
 });
 
 // Clothes API routes
