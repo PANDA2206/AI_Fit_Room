@@ -21,6 +21,15 @@ function stripWrappingQuotes(value = '') {
   return text;
 }
 
+function normalizeCatalogMode(value = '') {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return 'auto';
+  if (['auto', 'fallback', 'default'].includes(text)) return 'auto';
+  if (['local', 'fs', 'filesystem', 'disk'].includes(text)) return 'local';
+  if (['s3', 'tebi', 'bucket', 'remote'].includes(text)) return 's3';
+  return 'auto';
+}
+
 function ensureUrlScheme(value = '') {
   const text = stripWrappingQuotes(value);
   if (!text) return '';
@@ -227,6 +236,7 @@ function deriveSubcategory(prefix, key) {
 }
 
 router.get('/health', async (req, res) => {
+  const requestedMode = normalizeCatalogMode(req.query.mode || process.env.CATALOG_MODE || '');
   const config = getS3Config();
   const prefix = String(req.query.prefix || DEFAULT_PREFIX).trim();
   const configured = Boolean(config.bucket && config.endpoint);
@@ -261,7 +271,7 @@ router.get('/health', async (req, res) => {
   const client = getS3Client(config);
 
   try {
-    if (configured && client) {
+    if (requestedMode !== 'local' && configured && client) {
       const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
       const response = await client.send(new ListObjectsV2Command({
         Bucket: config.bucket,
@@ -285,6 +295,19 @@ router.get('/health', async (req, res) => {
     // fall through to local fallback
     baseReport.s3Error = error?.message || String(error);
     baseReport.s3ErrorName = error?.name || null;
+  }
+
+  if (requestedMode === 's3') {
+    const detail = baseReport.s3Error
+      ? `Catalog S3 is unavailable: ${baseReport.s3Error}`
+      : 'Catalog S3 is not configured';
+
+    return res.json({
+      ...baseReport,
+      ok: false,
+      mode: 's3',
+      error: detail
+    });
   }
 
   if (localCount > 0) {
@@ -327,11 +350,22 @@ router.get('/health', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
+    const requestedMode = normalizeCatalogMode(req.query.mode || process.env.CATALOG_MODE || '');
     const config = getS3Config();
     const prefix = String(req.query.prefix || DEFAULT_PREFIX).trim();
     const limit = Math.min(parsePositiveInt(req.query.limit, DEFAULT_LIMIT), MAX_LIMIT);
     const continuationToken = typeof req.query.continuationToken === 'string' ? req.query.continuationToken : undefined;
     const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+
+    if (requestedMode === 'local') {
+      const items = await buildLocalCatalogItems({ limit, search });
+      return res.json({
+        prefix,
+        mode: 'local',
+        items,
+        nextContinuationToken: null
+      });
+    }
 
     const canTryS3 = Boolean(config.bucket && config.endpoint);
     const client = getS3Client(config);
@@ -379,6 +413,16 @@ router.get('/', async (req, res) => {
           nextContinuationToken: response.NextContinuationToken || null
         });
       } catch (error) {
+        if (requestedMode === 's3') {
+          return res.status(502).json({
+            prefix,
+            mode: 's3',
+            items: [],
+            nextContinuationToken: null,
+            error: 'Catalog S3 request failed',
+            detail: error?.message || String(error)
+          });
+        }
         // fall back to local catalog below
         const fallbackItems = await buildLocalCatalogItems({ limit, search });
         return res.json({
@@ -389,6 +433,16 @@ router.get('/', async (req, res) => {
           s3Error: error?.message || String(error)
         });
       }
+    }
+
+    if (requestedMode === 's3') {
+      return res.status(400).json({
+        prefix,
+        mode: 's3',
+        items: [],
+        nextContinuationToken: null,
+        error: 'Catalog S3 client is not configured'
+      });
     }
 
     const items = await buildLocalCatalogItems({ limit, search });
